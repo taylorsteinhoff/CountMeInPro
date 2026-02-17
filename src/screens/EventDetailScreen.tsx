@@ -1,9 +1,18 @@
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { dummyEvents } from '../data/dummyData';
+import { getEventDetail, type EventDetail } from '../services/events';
 
 type DetailRoute = RouteProp<RootStackParamList, 'EventDetail'>;
 
@@ -12,12 +21,38 @@ export default function EventDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const event = dummyEvents.find((e) => e.id === params.eventId);
+  const [event, setEvent] = useState<EventDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  if (!event) {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getEventDetail(params.eventId);
+        if (!cancelled) setEvent(data);
+      } catch (e: unknown) {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : 'Failed to load event.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [params.eventId]);
+
+  if (loading) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.notFound}>Event not found</Text>
+        <ActivityIndicator size="large" color="#4A90D9" />
+      </View>
+    );
+  }
+
+  if (error || !event) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.notFound}>{error || 'Event not found'}</Text>
       </View>
     );
   }
@@ -91,7 +126,7 @@ export default function EventDetailScreen() {
         <Text style={styles.emptyText}>No signups yet</Text>
       ) : (
         event.signups.map((p) => (
-          <View key={p.id} style={styles.participantRow}>
+          <View key={p.signup_id} style={styles.participantRow}>
             <Text style={styles.participantName}>{p.name}</Text>
             <Text style={styles.participantDetail}>{p.email}</Text>
             {p.phone ? (

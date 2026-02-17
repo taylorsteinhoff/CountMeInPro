@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,7 +14,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { dummyEvents } from '../data/dummyData';
+import { getEventDetail, type EventDetail } from '../services/events';
+import { addParticipant, addSignup } from '../services/signups';
 
 type SignUpRoute = RouteProp<RootStackParamList, 'ParticipantSignUp'>;
 
@@ -22,19 +24,44 @@ export default function ParticipantSignUpScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const event = dummyEvents.find((e) => e.id === params.eventId);
-
+  const [event, setEvent] = useState<EventDetail | null>(null);
+  const [loadingEvent, setLoadingEvent] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getEventDetail(params.eventId);
+        if (!cancelled) setEvent(data);
+      } catch (e: unknown) {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : 'Failed to load event.');
+      } finally {
+        if (!cancelled) setLoadingEvent(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [params.eventId]);
+
+  if (loadingEvent) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#4A90D9" />
+      </View>
+    );
+  }
 
   if (!event) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.notFoundText}>Event not found</Text>
+        <Text style={styles.notFoundText}>{error || 'Event not found'}</Text>
       </View>
     );
   }
@@ -56,7 +83,7 @@ export default function ParticipantSignUpScreen() {
         <Text style={styles.confirmSub}>{event.location}</Text>
 
         <Pressable
-          onPress={() => navigation.navigate('HomeDashboard')}
+          onPress={() => navigation.popToTop()}
           style={styles.solidBtn}
         >
           <Text style={styles.solidBtnText}>Back to Events</Text>
@@ -65,7 +92,7 @@ export default function ParticipantSignUpScreen() {
     );
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
 
@@ -79,9 +106,18 @@ export default function ParticipantSignUpScreen() {
       return;
     }
 
-    // Milestone 1: no persistence, just show confirmation
     setError('');
-    setSubmitted(true);
+    setSubmitting(true);
+
+    try {
+      const participant = await addParticipant(trimmedName, trimmedEmail, phone.trim() || undefined);
+      await addSignup(params.eventId, participant.id, selectedSlotId);
+      setSubmitted(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Signup failed. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -161,8 +197,12 @@ export default function ParticipantSignUpScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {/* Submit */}
-        <Pressable onPress={handleSubmit} style={styles.solidBtn}>
-          <Text style={styles.solidBtnText}>Sign Up</Text>
+        <Pressable onPress={handleSubmit} style={styles.solidBtn} disabled={submitting}>
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.solidBtnText}>Sign Up</Text>
+          )}
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>

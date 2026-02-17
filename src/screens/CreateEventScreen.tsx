@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,9 +10,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { createEvent } from '../services/events';
+
+type CreateEventRoute = RouteProp<RootStackParamList, 'CreateEvent'>;
 
 interface SlotRow {
   id: string;
@@ -27,6 +32,8 @@ function makeSlot(): SlotRow {
 export default function CreateEventScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { params } = useRoute<CreateEventRoute>();
+  const { userId } = params;
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -35,6 +42,8 @@ export default function CreateEventScreen() {
   const [location, setLocation] = useState('');
   const [capacity, setCapacity] = useState('');
   const [slots, setSlots] = useState<SlotRow[]>([makeSlot()]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const addSlot = () => setSlots((prev) => [...prev, makeSlot()]);
 
@@ -46,9 +55,34 @@ export default function CreateEventScreen() {
       prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
     );
 
-  const handleSave = () => {
-    // Milestone 1: just navigate back, no validation or persistence
-    navigation.goBack();
+  const handleSave = async () => {
+    if (!title.trim()) {
+      setError('Event title is required.');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
+    try {
+      await createEvent(userId, {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        date: date.trim(),
+        time: time.trim(),
+        location: location.trim() || undefined,
+        capacity: parseInt(capacity, 10) || 0,
+        slots: slots.map((s) => ({
+          name: s.name.trim(),
+          quantity: parseInt(s.quantity, 10) || 1,
+        })),
+      });
+      navigation.goBack();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save event.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -157,9 +191,16 @@ export default function CreateEventScreen() {
           <Text style={styles.addSlotText}>+ Add Slot</Text>
         </Pressable>
 
+        {/* Error message */}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
         {/* Save */}
-        <Pressable onPress={handleSave} style={styles.saveBtn}>
-          <Text style={styles.saveBtnText}>Save Event</Text>
+        <Pressable onPress={handleSave} style={styles.saveBtn} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.saveBtnText}>Save Event</Text>
+          )}
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -222,6 +263,7 @@ const styles = StyleSheet.create({
   removeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   addSlotBtn: { marginTop: 4, marginBottom: 24, paddingVertical: 8 },
   addSlotText: { color: '#4A90D9', fontSize: 16, fontWeight: '600' },
+  errorText: { color: '#FF3B30', fontSize: 14, marginBottom: 12 },
   saveBtn: {
     backgroundColor: '#4A90D9',
     borderRadius: 8,

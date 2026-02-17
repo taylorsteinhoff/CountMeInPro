@@ -30,6 +30,16 @@ Core problem: Organizers (PTA, churches, nonprofits, sports teams, corporate HR)
 
 
 
+\## Supabase Configuration (Milestone 2)
+
+\- \*\*Project URL\*\*: https://xmthyxrvserdjapxohye.supabase.co
+
+\- \*\*Anon Public Key\*\*: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtdGh5eHJ2c2VyZGphcHhvaHllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNTMxMDAsImV4cCI6MjA4NjkyOTEwMH0.n5YeorC1hCMuUFqscWgt5LdFISmU-7FHg9CPIxw5Lq0
+
+These are the public (non-secret) credentials used to connect the React Native app to the Supabase backend.
+
+
+
 \## Core Features (MVP - Minimum Viable Product)
 
 1\. Organizer can create signup event in <2 minutes

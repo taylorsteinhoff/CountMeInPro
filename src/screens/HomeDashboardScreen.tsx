@@ -125,7 +125,7 @@ export default function HomeDashboardScreen() {
     return (
       <Pressable
         onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
-        style={styles.card}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       >
         <Text style={styles.cardTitle}>{item.title}</Text>
         <Text style={styles.cardMeta}>
@@ -163,42 +163,46 @@ export default function HomeDashboardScreen() {
 
 const styles = StyleSheet.create({
   /* Header */
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 4 },
-  headerBtn: { paddingHorizontal: 8, paddingVertical: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10, marginRight: 4 },
+  headerBtn: { paddingHorizontal: 10, paddingVertical: 4 },
   headerBtnPlus: { color: '#fff', fontSize: 28, fontWeight: 'bold', lineHeight: 32 },
-  headerBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  headerBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
   /* Centered states */
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  errorText: { fontSize: 16, color: '#FF3B30', textAlign: 'center', marginBottom: 16, paddingHorizontal: 32 },
-  retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#4A90D9' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9F9F9' },
+  errorText: { fontSize: 16, color: '#FF6B6B', textAlign: 'center', marginBottom: 16, paddingHorizontal: 32 },
+  retryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: '#4A90D9' },
   retryText: { color: '#4A90D9', fontSize: 16, fontWeight: '600' },
 
   /* List */
-  list: { padding: 16, paddingBottom: 40 },
+  list: { padding: 20, paddingBottom: 48, backgroundColor: '#F9F9F9' },
 
   /* Card */
   card: {
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 14,
     backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 6 },
-  cardMeta:  { fontSize: 14, color: '#666', marginBottom: 2 },
+  cardPressed: { opacity: 0.92 },
+  cardTitle: { fontSize: 20, fontWeight: '700', color: '#1A1A2E', marginBottom: 6 },
+  cardMeta:  { fontSize: 15, color: '#6B7280', marginBottom: 3 },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10,
+    marginTop: 14,
   },
-  signupCount: { fontSize: 13, fontWeight: '600', color: '#4A90D9' },
-  spotsLeft:   { fontSize: 13, fontWeight: '600', color: '#666' },
-  spotsLow:    { color: '#FF3B30' },
+  signupCount: { fontSize: 14, fontWeight: '600', color: '#4A90D9' },
+  spotsLeft:   { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+  spotsLow:    { color: '#FF6B6B' },
 
   /* Empty state */
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 80 },
-  emptyText: { fontSize: 18, color: '#666', marginBottom: 4 },
-  emptyHint: { fontSize: 14, color: '#999' },
+  emptyText: { fontSize: 20, fontWeight: '600', color: '#6B7280', marginBottom: 6 },
+  emptyHint: { fontSize: 15, color: '#9CA3AF' },
 });

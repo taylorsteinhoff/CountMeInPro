@@ -138,15 +138,15 @@ export default function EventDetailScreen() {
 
       {/* ── Action Buttons ── */}
       <View style={styles.actions}>
-        <Pressable onPress={handleShare} style={styles.outlineBtn}>
+        <Pressable onPress={handleShare} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Share Event</Text>
         </Pressable>
 
-        <Pressable onPress={handleExport} style={styles.outlineBtn}>
+        <Pressable onPress={handleExport} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Export Signup List</Text>
         </Pressable>
 
-        <Pressable onPress={handleSignUp} style={styles.solidBtn}>
+        <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
           <Text style={styles.solidBtnText}>Sign Up</Text>
         </Pressable>
       </View>
@@ -155,31 +155,35 @@ export default function EventDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16, paddingBottom: 40 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  notFound: { fontSize: 18, color: '#666' },
+  flex: { flex: 1, backgroundColor: '#F9F9F9' },
+  content: { padding: 20, paddingBottom: 48 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9F9F9' },
+  notFound: { fontSize: 18, color: '#6B7280' },
 
   /* Card */
   card: {
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    borderRadius: 8,
-    padding: 16,
+    borderRadius: 14,
+    padding: 20,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 8 },
-  description: { fontSize: 15, color: '#666', marginBottom: 16 },
-  infoRow: { marginBottom: 12 },
-  infoLabel: { fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 2 },
-  infoValue: { fontSize: 16, color: '#333' },
+  title: { fontSize: 26, fontWeight: '800', color: '#1A1A2E', marginBottom: 8 },
+  description: { fontSize: 16, color: '#6B7280', marginBottom: 18, lineHeight: 24 },
+  infoRow: { marginBottom: 14 },
+  infoLabel: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
+  infoValue: { fontSize: 17, color: '#1A1A2E', fontWeight: '500' },
 
   /* Capacity bar */
-  capacitySection: { marginTop: 4 },
+  capacitySection: { marginTop: 6 },
   barTrack: {
     height: 8,
-    backgroundColor: '#E8E8E8',
+    backgroundColor: '#E5E7EB',
     borderRadius: 4,
-    marginTop: 6,
+    marginTop: 8,
     overflow: 'hidden',
   },
   barFill: {
@@ -190,49 +194,54 @@ const styles = StyleSheet.create({
 
   /* Slots */
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 24,
-    marginBottom: 8,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A2E',
+    marginTop: 28,
+    marginBottom: 10,
   },
   slotRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    alignItems: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#E8E8E8',
+    borderBottomColor: '#F3F4F6',
   },
-  slotName: { fontSize: 16, color: '#333' },
-  slotQty: { fontSize: 16, color: '#666' },
+  slotName: { fontSize: 16, color: '#1A1A2E', fontWeight: '500' },
+  slotQty: { fontSize: 15, color: '#6B7280', fontWeight: '600' },
 
   /* Participants */
-  emptyText: { fontSize: 15, color: '#999', marginBottom: 8 },
+  emptyText: { fontSize: 15, color: '#9CA3AF', marginBottom: 8 },
   participantRow: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#E8E8E8',
+    borderBottomColor: '#F3F4F6',
   },
-  participantName: { fontSize: 16, fontWeight: '600', color: '#333' },
-  participantDetail: { fontSize: 14, color: '#666', marginTop: 2 },
+  participantName: { fontSize: 17, fontWeight: '600', color: '#1A1A2E' },
+  participantDetail: { fontSize: 14, color: '#6B7280', marginTop: 2 },
 
   /* Buttons */
-  actions: { marginTop: 32, gap: 12 },
+  actions: { marginTop: 36, gap: 12 },
   outlineBtn: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#4A90D9',
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 15,
     alignItems: 'center',
   },
-  outlineBtnText: { color: '#4A90D9', fontSize: 16, fontWeight: '600' },
+  outlineBtnPressed: { opacity: 0.8 },
+  outlineBtnText: { color: '#4A90D9', fontSize: 17, fontWeight: '600' },
   solidBtn: {
     backgroundColor: '#4A90D9',
-    borderRadius: 8,
-    paddingVertical: 16,
+    borderRadius: 12,
+    paddingVertical: 18,
     alignItems: 'center',
   },
-  solidBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  solidBtnPressed: { opacity: 0.88 },
+  solidBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
 });

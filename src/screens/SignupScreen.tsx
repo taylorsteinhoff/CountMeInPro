@@ -73,7 +73,7 @@ export default function SignupScreen() {
         </Text>
         <Pressable
           onPress={() => navigation.navigate('Login')}
-          style={styles.primaryBtn}
+          style={({ pressed }) => [styles.primaryBtn, pressed && styles.primaryBtnPressed]}
         >
           <Text style={styles.primaryBtnText}>Go to Sign In</Text>
         </Pressable>
@@ -143,7 +143,7 @@ export default function SignupScreen() {
         {/* Sign Up button */}
         <Pressable
           onPress={handleSignUp}
-          style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+          style={({ pressed }) => [styles.primaryBtn, loading && styles.primaryBtnDisabled, pressed && !loading && styles.primaryBtnPressed]}
           disabled={loading}
         >
           {loading ? (
@@ -166,72 +166,75 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
+  flex: { flex: 1, backgroundColor: '#F9F9F9' },
   content: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
 
   /* Header */
-  header: { alignItems: 'center', marginBottom: 40 },
-  appName: { fontSize: 32, fontWeight: 'bold', color: '#4A90D9', marginBottom: 6 },
-  tagline: { fontSize: 16, color: '#666' },
+  header: { alignItems: 'center', marginBottom: 48 },
+  appName: { fontSize: 36, fontWeight: '800', color: '#4A90D9', marginBottom: 8 },
+  tagline: { fontSize: 17, color: '#6B7280' },
 
   /* Form */
-  label: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 6 },
+  label: { fontSize: 15, fontWeight: '600', color: '#374151', marginBottom: 8 },
   input: {
     borderWidth: 1,
-    borderColor: '#E8E8E8',
-    borderRadius: 8,
-    padding: 14,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingVertical: 15,
+    paddingHorizontal: 16,
     fontSize: 16,
-    color: '#333',
-    marginBottom: 16,
+    color: '#1A1A2E',
+    backgroundColor: '#fff',
+    marginBottom: 18,
+    minHeight: 52,
   },
 
   /* Error */
-  error: { color: '#FF3B30', fontSize: 14, marginBottom: 16 },
+  error: { color: '#FF6B6B', fontSize: 15, marginBottom: 16 },
 
   /* Button */
   primaryBtn: {
     backgroundColor: '#4A90D9',
-    borderRadius: 8,
-    paddingVertical: 16,
+    borderRadius: 12,
+    paddingVertical: 18,
     alignItems: 'center',
-    marginTop: 4,
-    marginHorizontal: 24,
+    marginTop: 6,
   },
   primaryBtnDisabled: { opacity: 0.6 },
-  primaryBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  primaryBtnPressed: { opacity: 0.88 },
+  primaryBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
 
   /* Footer link */
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
-  footerText: { fontSize: 15, color: '#666' },
-  link: { fontSize: 15, color: '#4A90D9', fontWeight: '600' },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 28 },
+  footerText: { fontSize: 16, color: '#6B7280' },
+  link: { fontSize: 16, color: '#4A90D9', fontWeight: '600' },
 
   /* Success state */
   centered: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F9F9F9',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
   },
-  checkmark: { fontSize: 56, color: '#34C759', marginBottom: 16 },
+  checkmark: { fontSize: 64, color: '#34C759', marginBottom: 20 },
   successTitle: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1A1A2E',
+    marginBottom: 14,
     textAlign: 'center',
   },
   successBody: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 17,
+    color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
+    lineHeight: 26,
+    marginBottom: 36,
   },
 });

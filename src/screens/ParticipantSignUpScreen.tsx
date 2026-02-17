@@ -84,7 +84,7 @@ export default function ParticipantSignUpScreen() {
 
         <Pressable
           onPress={() => navigation.popToTop()}
-          style={styles.solidBtn}
+          style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}
         >
           <Text style={styles.solidBtnText}>Back to Events</Text>
         </Pressable>
@@ -178,7 +178,7 @@ export default function ParticipantSignUpScreen() {
             <Pressable
               key={slot.id}
               onPress={() => setSelectedSlotId(slot.id)}
-              style={[styles.slotOption, selected && styles.slotOptionSelected]}
+              style={({ pressed }) => [styles.slotOption, selected && styles.slotOptionSelected, pressed && styles.slotOptionPressed]}
             >
               <View style={[styles.radio, selected && styles.radioSelected]}>
                 {selected && <View style={styles.radioDot} />}
@@ -197,7 +197,7 @@ export default function ParticipantSignUpScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {/* Submit */}
-        <Pressable onPress={handleSubmit} style={styles.solidBtn} disabled={submitting}>
+        <Pressable onPress={handleSubmit} style={({ pressed }) => [styles.solidBtn, pressed && !submitting && styles.solidBtnPressed]} disabled={submitting}>
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -210,48 +210,51 @@ export default function ParticipantSignUpScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16, paddingBottom: 40 },
+  flex: { flex: 1, backgroundColor: '#F9F9F9' },
+  content: { padding: 20, paddingBottom: 48 },
   centered: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F9F9F9',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: 28,
   },
-  notFoundText: { fontSize: 18, color: '#666' },
+  notFoundText: { fontSize: 18, color: '#6B7280' },
 
   /* Event header */
   eventName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1A1A2E',
+    marginBottom: 6,
   },
-  eventMeta: { fontSize: 14, color: '#666', marginBottom: 16 },
+  eventMeta: { fontSize: 15, color: '#6B7280', marginBottom: 20, lineHeight: 22 },
 
   /* Form */
   label: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#333',
-    marginTop: 16,
-    marginBottom: 4,
+    color: '#374151',
+    marginTop: 20,
+    marginBottom: 6,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#E8E8E8',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     fontSize: 16,
-    color: '#333',
+    color: '#1A1A2E',
+    backgroundColor: '#fff',
+    minHeight: 50,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 24,
-    marginBottom: 8,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A2E',
+    marginTop: 28,
+    marginBottom: 12,
   },
 
   /* Slot picker */
@@ -259,21 +262,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E8E8E8',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 8,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    backgroundColor: '#fff',
   },
-  slotOptionSelected: { borderColor: '#4A90D9', backgroundColor: '#F0F6FF' },
+  slotOptionSelected: { borderColor: '#4A90D9', backgroundColor: '#EEF4FF', borderWidth: 1.5 },
+  slotOptionPressed: { opacity: 0.85 },
   radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#CCC',
+    borderColor: '#D1D5DB',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   radioSelected: { borderColor: '#4A90D9' },
   radioDot: {
@@ -283,31 +288,33 @@ const styles = StyleSheet.create({
     backgroundColor: '#4A90D9',
   },
   slotInfo: { flex: 1 },
-  slotName: { fontSize: 16, color: '#333' },
-  slotQty: { fontSize: 13, color: '#666', marginTop: 2 },
+  slotName: { fontSize: 17, color: '#1A1A2E', fontWeight: '500' },
+  slotQty: { fontSize: 14, color: '#6B7280', marginTop: 3 },
 
   /* Error */
-  errorText: { color: '#FF3B30', fontSize: 14, marginTop: 16 },
+  errorText: { color: '#FF6B6B', fontSize: 15, marginTop: 16 },
 
   /* Buttons */
   solidBtn: {
     backgroundColor: '#4A90D9',
-    borderRadius: 8,
-    paddingVertical: 16,
+    borderRadius: 12,
+    paddingVertical: 18,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 28,
   },
-  solidBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  solidBtnPressed: { opacity: 0.88 },
+  solidBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
 
   /* Confirmation */
-  checkmark: { fontSize: 48, color: '#34C759', marginBottom: 16 },
+  checkmark: { fontSize: 64, color: '#34C759', marginBottom: 20 },
   confirmTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1A1A2E',
+    marginBottom: 14,
+    textAlign: 'center',
   },
-  confirmDetail: { fontSize: 16, color: '#333', textAlign: 'center', marginBottom: 8 },
-  confirmSub: { fontSize: 14, color: '#666', marginBottom: 2 },
-  bold: { fontWeight: 'bold' },
+  confirmDetail: { fontSize: 17, color: '#374151', textAlign: 'center', marginBottom: 10, lineHeight: 26 },
+  confirmSub: { fontSize: 15, color: '#6B7280', marginBottom: 4 },
+  bold: { fontWeight: '700' },
 });

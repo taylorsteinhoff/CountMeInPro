@@ -30,7 +30,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const sharedHeaderOptions = {
   headerStyle: { backgroundColor: '#4A90D9' },
   headerTintColor: '#fff',
-  headerTitleStyle: { fontWeight: 'bold' as const },
+  headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
 };
 
 // ---------------------------------------------------------------------------

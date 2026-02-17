@@ -43,7 +43,11 @@ export default function CreateEventScreen() {
   const [capacity, setCapacity] = useState('');
   const [slots, setSlots] = useState<SlotRow[]>([makeSlot()]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [apiError, setApiError] = useState('');
+
+  // Tracks whether the user has tried to save at least once, so we know
+  // when to start showing validation errors.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const addSlot = () => setSlots((prev) => [...prev, makeSlot()]);
 
@@ -55,13 +59,34 @@ export default function CreateEventScreen() {
       prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
     );
 
-  const handleSave = async () => {
-    if (!title.trim()) {
-      setError('Event title is required.');
-      return;
-    }
+  // ── Derived validation ────────────────────────────────────────────────────
+  const titleError = !title.trim()
+    ? 'Event title is required.'
+    : title.trim().length < 3
+    ? 'Event title must be at least 3 characters long.'
+    : '';
 
-    setError('');
+  const parsedCapacity = parseInt(capacity, 10);
+  const capacityError = !capacity.trim()
+    ? 'Capacity is required.'
+    : isNaN(parsedCapacity) || parsedCapacity <= 0
+    ? 'Capacity must be a positive number (e.g. 20).'
+    : '';
+
+  const slotsError = !slots.some((s) => s.name.trim())
+    ? 'At least one slot must have a name.'
+    : '';
+
+  // Collect all active validation errors into one list.
+  const validationErrors = [titleError, capacityError, slotsError].filter(Boolean);
+  const isFormValid = validationErrors.length === 0;
+
+  const handleSave = async () => {
+    setSubmitAttempted(true);
+
+    if (!isFormValid) return;
+
+    setApiError('');
     setLoading(true);
 
     try {
@@ -71,7 +96,7 @@ export default function CreateEventScreen() {
         date: date.trim(),
         time: time.trim(),
         location: location.trim() || undefined,
-        capacity: parseInt(capacity, 10) || 0,
+        capacity: parsedCapacity,
         slots: slots.map((s) => ({
           name: s.name.trim(),
           quantity: parseInt(s.quantity, 10) || 1,
@@ -79,7 +104,7 @@ export default function CreateEventScreen() {
       });
       navigation.goBack();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to save event.');
+      setApiError(e instanceof Error ? e.message : 'Failed to save event.');
     } finally {
       setLoading(false);
     }
@@ -191,11 +216,28 @@ export default function CreateEventScreen() {
           <Text style={styles.addSlotText}>+ Add Slot</Text>
         </Pressable>
 
-        {/* Error message */}
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {/* Validation errors (shown after first save attempt) */}
+        {submitAttempted && validationErrors.length > 0 ? (
+          <View style={styles.validationBox}>
+            {validationErrors.map((err, i) => (
+              <Text key={i} style={styles.validationItem}>• {err}</Text>
+            ))}
+          </View>
+        ) : null}
+
+        {/* API-level error */}
+        {apiError ? <Text style={styles.errorText}>{apiError}</Text> : null}
 
         {/* Save */}
-        <Pressable onPress={handleSave} style={({ pressed }) => [styles.saveBtn, pressed && !loading && styles.saveBtnPressed]} disabled={loading}>
+        <Pressable
+          onPress={handleSave}
+          style={({ pressed }) => [
+            styles.saveBtn,
+            loading && styles.saveBtnDisabled,
+            pressed && !loading && styles.saveBtnPressed,
+          ]}
+          disabled={loading}
+        >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -270,13 +312,26 @@ const styles = StyleSheet.create({
   removeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   addSlotBtn: { marginTop: 6, marginBottom: 24, paddingVertical: 10 },
   addSlotText: { color: '#4A90D9', fontSize: 16, fontWeight: '600' },
+
+  /* Validation error block above the save button */
+  validationBox: {
+    backgroundColor: '#FFF0F0',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+  },
+  validationItem: { color: '#D93025', fontSize: 14, marginBottom: 4 },
+
+  /* API-level error */
   errorText: { color: '#FF6B6B', fontSize: 15, marginBottom: 12 },
+
   saveBtn: {
     backgroundColor: '#4A90D9',
     borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
   },
+  saveBtnDisabled: { opacity: 0.6 },
   saveBtnPressed: { opacity: 0.88 },
   saveBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
 });

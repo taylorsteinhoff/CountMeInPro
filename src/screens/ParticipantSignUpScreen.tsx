@@ -16,6 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { getEventDetail, type EventDetail } from '../services/events';
 import { addParticipant, addSignup } from '../services/signups';
+import { isValidEmail, isValidPhone } from '../utils/validation';
 
 type SignUpRoute = RouteProp<RootStackParamList, 'ParticipantSignUp'>;
 
@@ -32,7 +33,11 @@ export default function ParticipantSignUpScreen() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [apiError, setApiError] = useState('');
+
+  // Show per-field errors only after the first submit attempt.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,7 +47,7 @@ export default function ParticipantSignUpScreen() {
         if (!cancelled) setEvent(data);
       } catch (e: unknown) {
         if (!cancelled)
-          setError(e instanceof Error ? e.message : 'Failed to load event.');
+          setLoadError(e instanceof Error ? e.message : 'Failed to load event.');
       } finally {
         if (!cancelled) setLoadingEvent(false);
       }
@@ -61,7 +66,7 @@ export default function ParticipantSignUpScreen() {
   if (!event) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.notFoundText}>{error || 'Event not found'}</Text>
+        <Text style={styles.notFoundText}>{loadError || 'Event not found'}</Text>
       </View>
     );
   }
@@ -92,29 +97,42 @@ export default function ParticipantSignUpScreen() {
     );
   }
 
+  // ── Derived field-level errors ────────────────────────────────────────────
+  const nameError = !name.trim()
+    ? 'Your name is required.'
+    : name.trim().length < 2
+    ? 'Name must be at least 2 characters.'
+    : '';
+
+  const emailError = !email.trim()
+    ? 'Email is required.'
+    : !isValidEmail(email)
+    ? 'Email must include an @ symbol.'
+    : '';
+
+  // Phone is optional – only validate if the user typed something.
+  const phoneError = phone.trim() && !isValidPhone(phone)
+    ? 'Phone number must have at least 10 digits.'
+    : '';
+
+  const slotError = !selectedSlotId ? 'Please select a signup slot.' : '';
+
+  const isFormValid = !nameError && !emailError && !phoneError && !slotError;
+
   const handleSubmit = async () => {
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
+    setSubmitAttempted(true);
 
-    if (!trimmedName || !trimmedEmail) {
-      setError('Name and email are required.');
-      return;
-    }
+    if (!isFormValid) return;
 
-    if (!selectedSlotId) {
-      setError('Please select a signup slot.');
-      return;
-    }
-
-    setError('');
+    setApiError('');
     setSubmitting(true);
 
     try {
-      const participant = await addParticipant(trimmedName, trimmedEmail, phone.trim() || undefined);
-      await addSignup(params.eventId, participant.id, selectedSlotId);
+      const participant = await addParticipant(name.trim(), email.trim(), phone.trim() || undefined);
+      await addSignup(params.eventId, participant.id, selectedSlotId!);
       setSubmitted(true);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Signup failed. Please try again.');
+      setApiError(e instanceof Error ? e.message : 'Signup failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -139,18 +157,21 @@ export default function ParticipantSignUpScreen() {
         {/* Name */}
         <Text style={styles.label}>Name *</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, submitAttempted && nameError ? styles.inputInvalid : null]}
           value={name}
           onChangeText={setName}
           placeholder="Your full name"
           placeholderTextColor="#999"
           autoCapitalize="words"
         />
+        {submitAttempted && nameError ? (
+          <Text style={styles.fieldError}>{nameError}</Text>
+        ) : null}
 
         {/* Email */}
         <Text style={styles.label}>Email *</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, submitAttempted && emailError ? styles.inputInvalid : null]}
           value={email}
           onChangeText={setEmail}
           placeholder="you@example.com"
@@ -158,17 +179,23 @@ export default function ParticipantSignUpScreen() {
           keyboardType="email-address"
           autoCapitalize="none"
         />
+        {submitAttempted && emailError ? (
+          <Text style={styles.fieldError}>{emailError}</Text>
+        ) : null}
 
         {/* Phone (optional) */}
         <Text style={styles.label}>Phone (optional)</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, submitAttempted && phoneError ? styles.inputInvalid : null]}
           value={phone}
           onChangeText={setPhone}
           placeholder="555-0123"
           placeholderTextColor="#999"
           keyboardType="phone-pad"
         />
+        {submitAttempted && phoneError ? (
+          <Text style={styles.fieldError}>{phoneError}</Text>
+        ) : null}
 
         {/* Slot selection */}
         <Text style={styles.sectionTitle}>Select a Slot *</Text>
@@ -193,11 +220,20 @@ export default function ParticipantSignUpScreen() {
           );
         })}
 
-        {/* Error message */}
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {/* Slot selection error */}
+        {submitAttempted && slotError ? (
+          <Text style={styles.fieldError}>{slotError}</Text>
+        ) : null}
+
+        {/* API-level error */}
+        {apiError ? <Text style={styles.errorText}>{apiError}</Text> : null}
 
         {/* Submit */}
-        <Pressable onPress={handleSubmit} style={({ pressed }) => [styles.solidBtn, pressed && !submitting && styles.solidBtnPressed]} disabled={submitting}>
+        <Pressable
+          onPress={handleSubmit}
+          style={({ pressed }) => [styles.solidBtn, pressed && !submitting && styles.solidBtnPressed]}
+          disabled={submitting}
+        >
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -249,6 +285,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     minHeight: 50,
   },
+  inputInvalid: { borderColor: '#FF6B6B' },
+  fieldError: { color: '#FF6B6B', fontSize: 13, marginTop: 4, marginBottom: 4 },
+
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -291,7 +330,7 @@ const styles = StyleSheet.create({
   slotName: { fontSize: 17, color: '#1A1A2E', fontWeight: '500' },
   slotQty: { fontSize: 14, color: '#6B7280', marginTop: 3 },
 
-  /* Error */
+  /* API-level error */
   errorText: { color: '#FF6B6B', fontSize: 15, marginTop: 16 },
 
   /* Buttons */

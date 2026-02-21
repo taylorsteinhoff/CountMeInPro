@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -13,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { getEventDetail, type EventDetail } from '../services/events';
+import { supabase } from '../services/supabase';
 
 type DetailRoute = RouteProp<RootStackParamList, 'EventDetail'>;
 
@@ -73,6 +76,44 @@ export default function EventDetailScreen() {
     await Share.share({
       message: `Signup list for ${event.title}:\n\n${lines}`,
     });
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      // Build CSV header
+      let csv = 'Slot Name,Participant Name,Email,Phone,Signed Up At\n';
+
+      const { data: slots } = await supabase
+        .from('signup_slots')
+        .select('*')
+        .eq('event_id', params.eventId)
+        .order('created_at', { ascending: true });
+
+      const { data: allSignups } = await supabase
+        .from('event_signups')
+        .select('*, participants(*), signup_slots(*)')
+        .eq('event_id', params.eventId);
+
+      for (const slot of slots || []) {
+        const slotSignups = (allSignups || []).filter((s) => s.slot_id === slot.id);
+
+        if (slotSignups.length === 0) {
+          csv += `"${slot.name}","(empty)","","",""\n`;
+        } else {
+          for (const signup of slotSignups) {
+            csv += `"${slot.name}","${signup.participants?.name || ''}","${signup.participants?.email || ''}","${signup.participants?.phone || ''}","${signup.signed_up_at || ''}"\n`;
+          }
+        }
+      }
+
+      await Share.share({
+        message: csv,
+        title: `${event?.title} - Signups Export`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to export data';
+      Alert.alert('Export Error', msg);
+    }
   };
 
   const handleSignUp = () => {
@@ -145,6 +186,10 @@ export default function EventDetailScreen() {
         <Pressable onPress={handleExport} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Export Signup List</Text>
         </Pressable>
+
+        <TouchableOpacity style={styles.exportButton} onPress={handleExportCSV}>
+          <Text style={styles.exportButtonText}>📊 Export CSV</Text>
+        </TouchableOpacity>
 
         <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
           <Text style={styles.solidBtnText}>Sign Up</Text>
@@ -244,4 +289,22 @@ const styles = StyleSheet.create({
   },
   solidBtnPressed: { opacity: 0.88 },
   solidBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
+
+  exportButton: {
+    backgroundColor: '#059669',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  exportButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
 });

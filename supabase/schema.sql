@@ -38,16 +38,17 @@ $$ LANGUAGE plpgsql;
 -- =============================================================================
 
 CREATE TABLE public.events (
-  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  title       TEXT        NOT NULL,
-  description TEXT,
-  date        DATE        NOT NULL,
-  time        TEXT        NOT NULL,       -- e.g. "10:00 AM" — kept as text to match UI
-  location    TEXT,
-  capacity    INTEGER     NOT NULL DEFAULT 0 CHECK (capacity >= 0),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id           UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title             TEXT        NOT NULL,
+  description       TEXT,
+  date              DATE        NOT NULL,
+  time              TEXT        NOT NULL,       -- e.g. "10:00 AM" — kept as text to match UI
+  location          TEXT,
+  capacity          INTEGER     NOT NULL DEFAULT 0 CHECK (capacity >= 0),
+  reminder_sent_at  TIMESTAMPTZ,               -- set when the 24-hour reminder batch runs
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Keep updated_at current automatically
@@ -260,3 +261,12 @@ CREATE POLICY "Organizers can delete signups from their events"
         AND events.user_id = auth.uid()
     )
   );
+
+
+-- =============================================================================
+-- MIGRATION: reminder_sent_at column (run this if the table already exists)
+-- Safe to run multiple times — ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent.
+-- =============================================================================
+
+ALTER TABLE public.events
+  ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;

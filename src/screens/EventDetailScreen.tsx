@@ -116,6 +116,77 @@ export default function EventDetailScreen() {
     }
   };
 
+  const handleDuplicateEvent = async () => {
+    Alert.alert(
+      'Duplicate Event',
+      `Create a copy of "${event.title}"?`,
+      [
+        { text: 'Cancel' },
+        {
+          text: 'Duplicate',
+          onPress: async () => {
+            try {
+              const { data: user } = await supabase.auth.getUser();
+              if (!user.user?.id) throw new Error('Not authenticated');
+
+              // Default the copy to one week from today
+              const nextWeek = new Date();
+              nextWeek.setDate(nextWeek.getDate() + 7);
+              const newDate = nextWeek.toISOString().split('T')[0];
+
+              const { data: newEvent, error: eventError } = await supabase
+                .from('events')
+                .insert({
+                  user_id: user.user.id,
+                  title: `${event.title} (Copy)`,
+                  description: event.description,
+                  date: newDate,
+                  time: event.time,
+                  location: event.location,
+                  capacity: event.capacity,
+                })
+                .select()
+                .single();
+
+              if (eventError) throw eventError;
+
+              // Copy all slots from the original event
+              const { data: originalSlots } = await supabase
+                .from('signup_slots')
+                .select('*')
+                .eq('event_id', params.eventId);
+
+              if (originalSlots && originalSlots.length > 0) {
+                const newSlots = originalSlots.map((s) => ({
+                  event_id: newEvent.id,
+                  name: s.name,
+                  quantity: s.quantity,
+                }));
+
+                await supabase.from('signup_slots').insert(newSlots);
+              }
+
+              Alert.alert(
+                'Event Duplicated!',
+                `"${event.title} (Copy)" has been created for ${newDate}. You can edit the date and details from the dashboard.`,
+                [
+                  {
+                    text: 'Go to Dashboard',
+                    onPress: () => navigation.navigate('HomeDashboard', { userId: event.user_id }),
+                  },
+                  { text: 'Stay Here' },
+                ],
+              );
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : 'Failed to duplicate event';
+              Alert.alert('Error', msg);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleSignUp = () => {
     navigation.navigate('ParticipantSignUp', { eventId: event.id });
   };
@@ -186,6 +257,10 @@ export default function EventDetailScreen() {
         <Pressable onPress={handleExport} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Export Signup List</Text>
         </Pressable>
+
+        <TouchableOpacity style={styles.duplicateButton} onPress={handleDuplicateEvent}>
+          <Text style={styles.duplicateButtonText}>📋 Duplicate Event</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.exportButton} onPress={handleExportCSV}>
           <Text style={styles.exportButtonText}>📊 Export CSV</Text>
@@ -303,6 +378,24 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   exportButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  duplicateButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  duplicateButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',

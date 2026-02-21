@@ -20,7 +20,17 @@ export type RootStackParamList = {
   Signup: undefined;
   // App stack
   HomeDashboard: { userId: string };
-  CreateEvent: { userId: string };
+  CreateEvent: {
+    userId: string;
+    prefill?: {
+      title: string;
+      description: string;
+      time: string;
+      location: string;
+      capacity: string;
+      slots: Array<{ name: string; quantity: string }>;
+    };
+  };
   EventDetail: { eventId: string };
   ParticipantSignUp: { eventId: string };
 };

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -187,6 +188,49 @@ export default function EventDetailScreen() {
     );
   };
 
+  const handleAddToCalendar = () => {
+    const eventTitle = encodeURIComponent(event.title);
+    const eventLocation = encodeURIComponent(event.location || '');
+    const eventDescription = encodeURIComponent(event.description || '');
+    // Supabase returns date as "YYYY-MM-DD" and time as "HH:MM:SS"
+    const startDate = event.date.replace(/-/g, '');
+    const startTime = event.time.replace(/:/g, '').slice(0, 6); // "HHMMSS"
+
+    const googleUrl =
+      `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+      `&text=${eventTitle}` +
+      `&dates=${startDate}T${startTime}/${startDate}T${startTime}` +
+      `&location=${eventLocation}` +
+      `&details=${eventDescription}`;
+
+    const outlookUrl =
+      `https://outlook.live.com/calendar/0/deeplink/compose?subject=${eventTitle}` +
+      `&startdt=${event.date}T${event.time}` +
+      `&enddt=${event.date}T${event.time}` +
+      `&location=${eventLocation}` +
+      `&body=${eventDescription}`;
+
+    Alert.alert(
+      'Add to Calendar',
+      'Choose your calendar:',
+      [
+        {
+          text: 'Google Calendar',
+          onPress: () => Linking.openURL(googleUrl).catch(() =>
+            Alert.alert('Error', 'Could not open Google Calendar.')
+          ),
+        },
+        {
+          text: 'Outlook',
+          onPress: () => Linking.openURL(outlookUrl).catch(() =>
+            Alert.alert('Error', 'Could not open Outlook.')
+          ),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
   const handleSignUp = () => {
     navigation.navigate('ParticipantSignUp', { eventId: event.id });
   };
@@ -264,6 +308,10 @@ export default function EventDetailScreen() {
 
         <TouchableOpacity style={styles.exportButton} onPress={handleExportCSV}>
           <Text style={styles.exportButtonText}>📊 Export CSV</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.calendarButton} onPress={handleAddToCalendar}>
+          <Text style={styles.calendarButtonText}>📅 Add to Calendar</Text>
         </TouchableOpacity>
 
         <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
@@ -396,6 +444,24 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   duplicateButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  calendarButton: {
+    backgroundColor: '#0EA5E9',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  calendarButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',

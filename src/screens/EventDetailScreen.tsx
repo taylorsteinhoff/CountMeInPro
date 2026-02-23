@@ -28,6 +28,10 @@ export default function EventDetailScreen() {
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [swapRequests, setSwapRequests] = useState<any[]>([]);
+
+  const SWAP_SELECT =
+    '*, requester:requester_signup_id(*, participants(*), signup_slots(*)), target:target_signup_id(*, participants(*), signup_slots(*))';
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +39,13 @@ export default function EventDetailScreen() {
       try {
         const data = await getEventDetail(params.eventId);
         if (!cancelled) setEvent(data);
+
+        const { data: swaps } = await supabase
+          .from('swap_requests')
+          .select(SWAP_SELECT)
+          .eq('event_id', params.eventId)
+          .eq('status', 'pending');
+        if (!cancelled) setSwapRequests(swaps || []);
       } catch (e: unknown) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : 'Failed to load event.');
@@ -44,6 +55,23 @@ export default function EventDetailScreen() {
     })();
     return () => { cancelled = true; };
   }, [params.eventId]);
+
+  const refreshEvent = async () => {
+    try {
+      const [data, { data: swaps }] = await Promise.all([
+        getEventDetail(params.eventId),
+        supabase
+          .from('swap_requests')
+          .select(SWAP_SELECT)
+          .eq('event_id', params.eventId)
+          .eq('status', 'pending'),
+      ]);
+      setEvent(data);
+      setSwapRequests(swaps || []);
+    } catch {
+      // silent on background refresh
+    }
+  };
 
   if (loading) {
     return (
@@ -188,6 +216,81 @@ export default function EventDetailScreen() {
     );
   };
 
+  const handleRequestSwap = async (mySignupId: string, mySlotName: string) => {
+    const { data: otherSignups } = await supabase
+      .from('event_signups')
+      .select('*, participants(*), signup_slots(*)')
+      .eq('event_id', params.eventId)
+      .neq('id', mySignupId);
+
+    if (!otherSignups || otherSignups.length === 0) {
+      Alert.alert('No Swaps Available', 'No other participants to swap with.');
+      return;
+    }
+
+    type AlertBtn = { text: string; onPress?: () => void; style?: 'default' | 'cancel' | 'destructive' };
+    const options: AlertBtn[] = otherSignups.map((s) => ({
+      text: `${s.participants?.name || 'Unknown'} — ${s.signup_slots?.name || 'Unknown slot'}`,
+      onPress: async () => {
+        try {
+          const { error } = await supabase.from('swap_requests').insert({
+            event_id: params.eventId,
+            requester_signup_id: mySignupId,
+            target_signup_id: s.id,
+            status: 'pending',
+          });
+          if (error) throw error;
+          Alert.alert(
+            'Swap Requested!',
+            `Your swap request has been sent to ${s.participants?.name}. They will be notified.`
+          );
+        } catch (err: unknown) {
+          Alert.alert('Error', err instanceof Error ? err.message : 'Failed to request swap');
+        }
+      },
+    }));
+    options.push({ text: 'Cancel', style: 'cancel' });
+
+    Alert.alert(`Swap "${mySlotName}" with:`, 'Choose who to swap with:', options);
+  };
+
+  const handleRespondToSwap = async (swapId: string, response: 'accepted' | 'declined') => {
+    try {
+      if (response === 'accepted') {
+        const { data: swap } = await supabase
+          .from('swap_requests')
+          .select('*, requester:requester_signup_id(*), target:target_signup_id(*)')
+          .eq('id', swapId)
+          .single();
+
+        if (!swap) throw new Error('Swap not found');
+
+        const requesterSlotId = swap.requester?.slot_id;
+        const targetSlotId = swap.target?.slot_id;
+
+        await supabase
+          .from('event_signups')
+          .update({ slot_id: targetSlotId })
+          .eq('id', swap.requester_signup_id);
+
+        await supabase
+          .from('event_signups')
+          .update({ slot_id: requesterSlotId })
+          .eq('id', swap.target_signup_id);
+      }
+
+      await supabase
+        .from('swap_requests')
+        .update({ status: response, updated_at: new Date().toISOString() })
+        .eq('id', swapId);
+
+      Alert.alert('Done', response === 'accepted' ? 'Slots swapped!' : 'Swap declined.');
+      refreshEvent();
+    } catch (err: unknown) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to process swap');
+    }
+  };
+
   const handleAddToCalendar = () => {
     const eventTitle = encodeURIComponent(event.title);
     const eventLocation = encodeURIComponent(event.location || '');
@@ -283,13 +386,60 @@ export default function EventDetailScreen() {
       ) : (
         event.signups.map((p) => (
           <View key={p.signup_id} style={styles.participantRow}>
-            <Text style={styles.participantName}>{p.name}</Text>
-            <Text style={styles.participantDetail}>{p.email}</Text>
-            {p.phone ? (
-              <Text style={styles.participantDetail}>{p.phone}</Text>
-            ) : null}
+            <View style={styles.participantInfo}>
+              <Text style={styles.participantName}>{p.name}</Text>
+              <Text style={styles.participantDetail}>{p.email}</Text>
+              {p.phone ? <Text style={styles.participantDetail}>{p.phone}</Text> : null}
+              {p.slot_name ? <Text style={styles.participantSlot}>{p.slot_name}</Text> : null}
+            </View>
+            <TouchableOpacity
+              style={styles.swapBtn}
+              onPress={() => handleRequestSwap(p.signup_id, p.slot_name ?? 'your slot')}
+            >
+              <Text style={styles.swapBtnText}>🔄 Swap</Text>
+            </TouchableOpacity>
           </View>
         ))
+      )}
+
+      {/* ── Pending Swap Requests ── */}
+      {swapRequests.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>
+            Pending Swaps ({swapRequests.length})
+          </Text>
+          {swapRequests.map((swap) => (
+            <View key={swap.id} style={styles.swapRequestRow}>
+              <Text style={styles.swapRequestText}>
+                <Text style={{ fontWeight: '700' }}>
+                  {swap.requester?.participants?.name || 'Someone'}
+                </Text>
+                {' wants to swap\n'}
+                <Text style={{ fontWeight: '600' }}>
+                  "{swap.requester?.signup_slots?.name || '?'}"
+                </Text>
+                {' ↔ '}
+                <Text style={{ fontWeight: '600' }}>
+                  "{swap.target?.signup_slots?.name || '?'}"
+                </Text>
+              </Text>
+              <View style={styles.swapResponseRow}>
+                <TouchableOpacity
+                  style={styles.acceptBtn}
+                  onPress={() => handleRespondToSwap(swap.id, 'accepted')}
+                >
+                  <Text style={styles.acceptBtnText}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.declineBtn}
+                  onPress={() => handleRespondToSwap(swap.id, 'declined')}
+                >
+                  <Text style={styles.declineBtnText}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </>
       )}
 
       {/* ── Action Buttons ── */}
@@ -384,14 +534,75 @@ const styles = StyleSheet.create({
   /* Participants */
   emptyText: { fontSize: 15, color: '#9CA3AF', marginBottom: 8 },
   participantRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 13,
     paddingHorizontal: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
+  participantInfo: { flex: 1 },
   participantName: { fontSize: 17, fontWeight: '600', color: '#1A1A2E' },
   participantDetail: { fontSize: 14, color: '#6B7280', marginTop: 2 },
+  participantSlot: { fontSize: 12, color: '#4A90D9', fontWeight: '600', marginTop: 3 },
+
+  /* Swap request button (per row) */
+  swapBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    marginLeft: 10,
+  },
+  swapBtnText: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
+
+  /* Pending swap request card */
+  swapRequestRow: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  swapRequestText: { fontSize: 14, color: '#1A1A2E', lineHeight: 20, marginBottom: 10 },
+  swapResponseRow: { flexDirection: 'row', gap: 8 },
+  acceptBtn: {
+    flex: 1,
+    backgroundColor: '#059669',
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  acceptBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  declineBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  declineBtnText: { color: '#6B7280', fontWeight: '600', fontSize: 14 },
+
+  swapButton: {
+    backgroundColor: '#F3E8FF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 8,
+  },
+  swapButtonText: {
+    fontSize: 16,
+  },
 
   /* Buttons */
   actions: { marginTop: 36, gap: 12 },

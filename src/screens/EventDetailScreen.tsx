@@ -467,6 +467,38 @@ export default function EventDetailScreen() {
         <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
           <Text style={styles.solidBtnText}>Sign Up</Text>
         </Pressable>
+<Pressable
+          onPress={() => {
+            Alert.alert(
+              'Delete Event',
+              `Are you sure you want to delete "${event.title}"? This cannot be undone.`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      const { error: delError } = await supabase
+                        .from('events')
+                        .delete()
+                        .eq('id', event.id);
+                      if (delError) throw delError;
+                      Alert.alert('Deleted', 'Event has been deleted.', [
+                        { text: 'OK', onPress: () => navigation.goBack() },
+                      ]);
+                    } catch (err: unknown) {
+                      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete event');
+                    }
+                  },
+                },
+              ],
+            );
+          }}
+          style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}
+        >
+          <Text style={styles.deleteBtnText}>Delete Event</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
@@ -677,4 +709,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+deleteBtn: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  deleteBtnPressed: { opacity: 0.8 },
+  deleteBtnText: { color: '#EF4444', fontSize: 17, fontWeight: '700' },
 });

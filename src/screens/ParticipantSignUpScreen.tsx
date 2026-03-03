@@ -30,13 +30,11 @@ export default function ParticipantSignUpScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [apiError, setApiError] = useState('');
-
-  // Show per-field errors only after the first submit attempt.
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
@@ -58,7 +56,7 @@ export default function ParticipantSignUpScreen() {
   if (loadingEvent) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#4A90D9" />
+        <ActivityIndicator size="large" color="#7C3AED" />
       </View>
     );
   }
@@ -72,7 +70,9 @@ export default function ParticipantSignUpScreen() {
   }
 
   if (submitted) {
-    const slotName = event.slots.find((s) => s.id === selectedSlotId)?.name;
+    const slotNames = event.slots
+      .filter((s) => selectedSlotIds.includes(s.id))
+      .map((s) => s.name);
     return (
       <View style={styles.centered}>
         <Text style={styles.checkmark}>✓</Text>
@@ -80,13 +80,12 @@ export default function ParticipantSignUpScreen() {
         <Text style={styles.confirmDetail}>
           {name}, you've been added to{' '}
           <Text style={styles.bold}>{event.title}</Text>
-          {slotName ? ` for "${slotName}"` : ''}.
+          {slotNames.length > 0 ? ` for: ${slotNames.join(', ')}` : ''}.
         </Text>
         <Text style={styles.confirmSub}>
           {event.date} · {event.time}
         </Text>
         <Text style={styles.confirmSub}>{event.location}</Text>
-
         <Pressable
           onPress={() => navigation.popToTop()}
           style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}
@@ -97,7 +96,14 @@ export default function ParticipantSignUpScreen() {
     );
   }
 
-  // ── Derived field-level errors ────────────────────────────────────────────
+  const toggleSlot = (slotId: string) => {
+    setSelectedSlotIds((prev) =>
+      prev.includes(slotId)
+        ? prev.filter((id) => id !== slotId)
+        : [...prev, slotId]
+    );
+  };
+
   const nameError = !name.trim()
     ? 'Your name is required.'
     : name.trim().length < 2
@@ -110,26 +116,24 @@ export default function ParticipantSignUpScreen() {
     ? 'Email must include an @ symbol.'
     : '';
 
-  // Phone is optional – only validate if the user typed something.
   const phoneError = phone.trim() && !isValidPhone(phone)
     ? 'Phone number must have at least 10 digits.'
     : '';
 
-  const slotError = !selectedSlotId ? 'Please select a signup slot.' : '';
+  const slotError = selectedSlotIds.length === 0 ? 'Please select at least one slot.' : '';
 
   const isFormValid = !nameError && !emailError && !phoneError && !slotError;
 
   const handleSubmit = async () => {
     setSubmitAttempted(true);
-
     if (!isFormValid) return;
-
     setApiError('');
     setSubmitting(true);
-
     try {
       const participant = await addParticipant(name.trim(), email.trim(), phone.trim() || undefined);
-      await addSignup(params.eventId, participant.id, selectedSlotId!);
+      for (const slotId of selectedSlotIds) {
+        await addSignup(params.eventId, participant.id, slotId, notes.trim());
+      }
       setSubmitted(true);
     } catch (e: unknown) {
       setApiError(e instanceof Error ? e.message : 'Signup failed. Please try again.');
@@ -137,8 +141,7 @@ export default function ParticipantSignUpScreen() {
       setSubmitting(false);
     }
   };
-
-  return (
+return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -148,13 +151,11 @@ export default function ParticipantSignUpScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Event context */}
         <Text style={styles.eventName}>{event.title}</Text>
         <Text style={styles.eventMeta}>
           {event.date} · {event.time} · {event.location}
         </Text>
 
-        {/* Name */}
         <Text style={styles.label}>Name *</Text>
         <TextInput
           style={[styles.input, submitAttempted && nameError ? styles.inputInvalid : null]}
@@ -168,7 +169,6 @@ export default function ParticipantSignUpScreen() {
           <Text style={styles.fieldError}>{nameError}</Text>
         ) : null}
 
-        {/* Email */}
         <Text style={styles.label}>Email *</Text>
         <TextInput
           style={[styles.input, submitAttempted && emailError ? styles.inputInvalid : null]}
@@ -183,7 +183,6 @@ export default function ParticipantSignUpScreen() {
           <Text style={styles.fieldError}>{emailError}</Text>
         ) : null}
 
-        {/* Phone (optional) */}
         <Text style={styles.label}>Phone (optional)</Text>
         <TextInput
           style={[styles.input, submitAttempted && phoneError ? styles.inputInvalid : null]}
@@ -197,38 +196,43 @@ export default function ParticipantSignUpScreen() {
           <Text style={styles.fieldError}>{phoneError}</Text>
         ) : null}
 
-        {/* Slot selection */}
-        <Text style={styles.sectionTitle}>Select a Slot *</Text>
+        <Text style={styles.sectionTitle}>Select Slots * (tap to select multiple)</Text>
         {event.slots.map((slot) => {
-          const selected = selectedSlotId === slot.id;
+          const slotSignups = event.signups.filter((s) => s.slot_id === slot.id);
+          const spotsLeft = slot.quantity - slotSignups.length;
+          const isFull = spotsLeft <= 0;
+          const selected = selectedSlotIds.includes(slot.id);
           return (
             <Pressable
               key={slot.id}
-              onPress={() => setSelectedSlotId(slot.id)}
-              style={({ pressed }) => [styles.slotOption, selected && styles.slotOptionSelected, pressed && styles.slotOptionPressed]}
+              onPress={() => !isFull && toggleSlot(slot.id)}
+              disabled={isFull}
+              style={({ pressed }) => [
+                styles.slotOption,
+                selected && styles.slotOptionSelected,
+                isFull && styles.slotOptionFull,
+                pressed && !isFull && styles.slotOptionPressed,
+              ]}
             >
-              <View style={[styles.radio, selected && styles.radioSelected]}>
-                {selected && <View style={styles.radioDot} />}
+              <View style={[styles.checkbox, selected && styles.checkboxSelected, isFull && styles.checkboxFull]}>
+                {selected && <Text style={styles.checkboxCheck}>✓</Text>}
               </View>
               <View style={styles.slotInfo}>
-                <Text style={styles.slotName}>{slot.name}</Text>
-                <Text style={styles.slotQty}>
-                  {slot.quantity} {slot.quantity === 1 ? 'spot' : 'spots'}
+                <Text style={[styles.slotName, isFull && styles.slotNameFull]}>{slot.name}</Text>
+                <Text style={[styles.slotQty, isFull && styles.slotQtyFull]}>
+                  {isFull ? 'Full' : `${spotsLeft} of ${slot.quantity} spots available`}
                 </Text>
               </View>
             </Pressable>
           );
         })}
 
-        {/* Slot selection error */}
         {submitAttempted && slotError ? (
           <Text style={styles.fieldError}>{slotError}</Text>
         ) : null}
 
-        {/* API-level error */}
         {apiError ? <Text style={styles.errorText}>{apiError}</Text> : null}
 
-        {/* Submit */}
         <Pressable
           onPress={handleSubmit}
           style={({ pressed }) => [styles.solidBtn, pressed && !submitting && styles.solidBtnPressed]}
@@ -237,7 +241,9 @@ export default function ParticipantSignUpScreen() {
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.solidBtnText}>Sign Up</Text>
+            <Text style={styles.solidBtnText}>
+              Sign Up{selectedSlotIds.length > 1 ? ` for ${selectedSlotIds.length} Slots` : ''}
+            </Text>
           )}
         </Pressable>
       </ScrollView>
@@ -256,8 +262,6 @@ const styles = StyleSheet.create({
     padding: 28,
   },
   notFoundText: { fontSize: 18, color: '#6B7280' },
-
-  /* Event header */
   eventName: {
     fontSize: 24,
     fontWeight: '800',
@@ -265,8 +269,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   eventMeta: { fontSize: 15, color: '#6B7280', marginBottom: 20, lineHeight: 22 },
-
-  /* Form */
   label: {
     fontSize: 15,
     fontWeight: '600',
@@ -286,8 +288,8 @@ const styles = StyleSheet.create({
     minHeight: 50,
   },
   inputInvalid: { borderColor: '#FF6B6B' },
+  multiline: { minHeight: 80, textAlignVertical: 'top' },
   fieldError: { color: '#FF6B6B', fontSize: 13, marginTop: 4, marginBottom: 4 },
-
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -295,8 +297,6 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 12,
   },
-
-  /* Slot picker */
   slotOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,35 +307,30 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: '#fff',
   },
-  slotOptionSelected: { borderColor: '#4A90D9', backgroundColor: '#EEF4FF', borderWidth: 1.5 },
+  slotOptionSelected: { borderColor: '#7C3AED', backgroundColor: '#F5F0FF', borderWidth: 1.5 },
+  slotOptionFull: { opacity: 0.5, backgroundColor: '#F9FAFB' },
   slotOptionPressed: { opacity: 0.85 },
-  radio: {
+  checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: '#D1D5DB',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
-  radioSelected: { borderColor: '#4A90D9' },
-  radioDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4A90D9',
-  },
+  checkboxSelected: { borderColor: '#7C3AED', backgroundColor: '#7C3AED' },
+  checkboxCheck: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  checkboxFull: { borderColor: '#D1D5DB' },
   slotInfo: { flex: 1 },
   slotName: { fontSize: 17, color: '#1A1A2E', fontWeight: '500' },
+  slotNameFull: { color: '#9CA3AF' },
   slotQty: { fontSize: 14, color: '#6B7280', marginTop: 3 },
-
-  /* API-level error */
+  slotQtyFull: { color: '#EF4444' },
   errorText: { color: '#FF6B6B', fontSize: 15, marginTop: 16 },
-
-  /* Buttons */
   solidBtn: {
-    backgroundColor: '#4A90D9',
+    backgroundColor: '#7C3AED',
     borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
@@ -343,8 +338,6 @@ const styles = StyleSheet.create({
   },
   solidBtnPressed: { opacity: 0.88 },
   solidBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
-
-  /* Confirmation */
   checkmark: { fontSize: 64, color: '#34C759', marginBottom: 20 },
   confirmTitle: {
     fontSize: 28,

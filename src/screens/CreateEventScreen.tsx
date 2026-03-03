@@ -70,7 +70,6 @@ export default function CreateEventScreen() {
   const [endDate, setEndDate] = useState('');
   const [time, setTime] = useState(prefill?.time ?? '');
   const [location, setLocation] = useState(prefill?.location ?? '');
-  const [capacity, setCapacity] = useState(prefill?.capacity ?? '');
   const [slots, setSlots] = useState<SlotRow[]>(
     prefill?.slots && prefill.slots.length > 0
       ? prefill.slots.map((s) => makeSlot(s.name, s.quantity))
@@ -85,6 +84,33 @@ export default function CreateEventScreen() {
   const [apiError, setApiError] = useState('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  // Multi-day slot mode
+  const [slotMode, setSlotMode] = useState<'same' | 'different'>('same');
+  const [perDaySlots, setPerDaySlots] = useState<Record<string, SlotRow[]>>({});
+  const [activeDayTab, setActiveDayTab] = useState('');
+
+  const isMultiDay = startDate && endDate && startDate !== endDate;
+  const eventDays = isMultiDay ? getDateRange(startDate, endDate) : [];
+
+  // Initialize per-day slots when switching to "different" mode
+  const handleSlotModeChange = (mode: 'same' | 'different') => {
+    setSlotMode(mode);
+    if (mode === 'different' && eventDays.length > 0) {
+      const newPerDay: Record<string, SlotRow[]> = {};
+      for (const day of eventDays) {
+        if (!perDaySlots[day] || perDaySlots[day].length === 0) {
+          newPerDay[day] = slots.map((s) => makeSlot(s.name, s.quantity));
+        } else {
+          newPerDay[day] = perDaySlots[day];
+        }
+      }
+      setPerDaySlots(newPerDay);
+      if (!activeDayTab || !eventDays.includes(activeDayTab)) {
+        setActiveDayTab(eventDays[0]);
+      }
+    }
+  };
+
   const addSlot = () => setSlots((prev) => [...prev, makeSlot()]);
   const removeSlot = (id: string) =>
     setSlots((prev) => prev.filter((s) => s.id !== id));
@@ -92,6 +118,25 @@ export default function CreateEventScreen() {
     setSlots((prev) =>
       prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
     );
+
+  const addDaySlot = (day: string) => {
+    setPerDaySlots((prev) => ({
+      ...prev,
+      [day]: [...(prev[day] || []), makeSlot()],
+    }));
+  };
+  const removeDaySlot = (day: string, id: string) => {
+    setPerDaySlots((prev) => ({
+      ...prev,
+      [day]: (prev[day] || []).filter((s) => s.id !== id),
+    }));
+  };
+  const updateDaySlot = (day: string, id: string, field: 'name' | 'quantity', value: string) => {
+    setPerDaySlots((prev) => ({
+      ...prev,
+      [day]: (prev[day] || []).map((s) => (s.id === id ? { ...s, [field]: value } : s)),
+    }));
+  };
 
   const openDatePicker = (target: 'start' | 'end') => {
     setDatePickerTarget(target);
@@ -110,8 +155,6 @@ export default function CreateEventScreen() {
     setShowCalendar(false);
   };
 
-  const isMultiDay = startDate && endDate && startDate !== endDate;
-
   const titleError = !title.trim()
     ? 'Event title is required.'
     : title.trim().length < 3
@@ -125,21 +168,21 @@ export default function CreateEventScreen() {
     ? 'End date must be on or after start date.'
     : '';
 
-  const parsedCapacity = parseInt(capacity, 10);
-  const capacityError = !capacity.trim()
-    ? 'Capacity is required.'
-    : isNaN(parsedCapacity) || parsedCapacity <= 0
-    ? 'Capacity must be a positive number (e.g. 20).'
-    : '';
+  const slotsError = (() => {
+    if (isMultiDay && slotMode === 'different') {
+      for (const day of eventDays) {
+        if (!(perDaySlots[day] || []).some((s) => s.name.trim())) {
+          return `${formatShortDate(day)} needs at least one slot with a name.`;
+        }
+      }
+      return '';
+    }
+    return !slots.some((s) => s.name.trim()) ? 'At least one slot must have a name.' : '';
+  })();
 
-  const slotsError = !slots.some((s) => s.name.trim())
-    ? 'At least one slot must have a name.'
-    : '';
-
-  const validationErrors = [titleError, dateError, endDateError, capacityError, slotsError].filter(Boolean);
+  const validationErrors = [titleError, dateError, endDateError, slotsError].filter(Boolean);
   const isFormValid = validationErrors.length === 0;
-
-  const handleSave = async () => {
+const handleSave = async () => {
     setSubmitAttempted(true);
     if (!isFormValid) return;
     setApiError('');
@@ -176,27 +219,57 @@ export default function CreateEventScreen() {
             end_date: eventEndDate,
             time: time.trim(),
             location: location.trim() || null,
-            capacity: parsedCapacity,
+            capacity: 0,
           })
           .select()
           .single();
         if (eventError) throw eventError;
-        const validSlots = slots.filter((s) => s.name.trim());
-        if (validSlots.length > 0) {
-          const eventDates = getDateRange(eventStartDate, eventEndDate);
-          const isMulti = eventDates.length > 1;
-          const newSlots: Array<{ event_id: string; name: string; quantity: number }> = [];
-          for (const slotDate of eventDates) {
-            for (const s of validSlots) {
+
+        // Build slots based on mode
+        const eventDates = getDateRange(eventStartDate, eventEndDate);
+        const isMulti = eventDates.length > 1;
+        const newSlots: Array<{ event_id: string; name: string; quantity: number }> = [];
+
+        if (isMulti && slotMode === 'different') {
+          // Different slots per day
+          const origDays = getDateRange(startDate, endDate);
+          for (let dayIdx = 0; dayIdx < eventDates.length; dayIdx++) {
+            const origDay = origDays[dayIdx] || origDays[0];
+            const daySlots = perDaySlots[origDay] || [];
+            const validDaySlots = daySlots.filter((s) => s.name.trim());
+            for (const s of validDaySlots) {
               newSlots.push({
                 event_id: newEvent.id,
-                name: isMulti
-                  ? `${s.name.trim()} (${formatShortDate(slotDate)})`
-                  : s.name.trim(),
+                name: `${s.name.trim()} (${formatShortDate(eventDates[dayIdx])})`,
                 quantity: parseInt(s.quantity, 10) || 1,
               });
             }
           }
+        } else if (isMulti) {
+          // Same slots each day
+          const validSlots = slots.filter((s) => s.name.trim());
+          for (const slotDate of eventDates) {
+            for (const s of validSlots) {
+              newSlots.push({
+                event_id: newEvent.id,
+                name: `${s.name.trim()} (${formatShortDate(slotDate)})`,
+                quantity: parseInt(s.quantity, 10) || 1,
+              });
+            }
+          }
+        } else {
+          // Single day event
+          const validSlots = slots.filter((s) => s.name.trim());
+          for (const s of validSlots) {
+            newSlots.push({
+              event_id: newEvent.id,
+              name: s.name.trim(),
+              quantity: parseInt(s.quantity, 10) || 1,
+            });
+          }
+        }
+
+        if (newSlots.length > 0) {
           await supabase.from('signup_slots').insert(newSlots);
         }
         eventsCreated++;
@@ -214,7 +287,8 @@ export default function CreateEventScreen() {
       setLoading(false);
     }
   };
-const getMarkedDates = () => {
+
+  const getMarkedDates = () => {
     const marked: any = {};
     if (startDate && endDate && startDate !== endDate) {
       const dates = getDateRange(startDate, endDate);
@@ -231,7 +305,42 @@ const getMarkedDates = () => {
     return marked;
   };
 
-  return (
+  // Render slot rows for a given array + callbacks
+  const renderSlotRows = (
+    slotList: SlotRow[],
+    onUpdate: (id: string, field: 'name' | 'quantity', value: string) => void,
+    onRemove: (id: string) => void,
+    onAdd: () => void,
+  ) => (
+    <>
+      {slotList.map((slot) => (
+        <View key={slot.id} style={styles.slotRow}>
+          <TextInput
+            style={styles.slotName}
+            value={slot.name}
+            onChangeText={(v) => onUpdate(slot.id, 'name', v)}
+            placeholder="Slot name"
+            placeholderTextColor="#999"
+          />
+          <TextInput
+            style={styles.slotQty}
+            value={slot.quantity}
+            onChangeText={(v) => onUpdate(slot.id, 'quantity', v)}
+            placeholder="Qty"
+            placeholderTextColor="#999"
+            keyboardType="number-pad"
+          />
+          <Pressable onPress={() => onRemove(slot.id)} style={styles.removeBtn}>
+            <Text style={styles.removeBtnText}>X</Text>
+          </Pressable>
+        </View>
+      ))}
+      <Pressable onPress={onAdd} style={styles.addSlotBtn}>
+        <Text style={styles.addSlotText}>+ Add Slot</Text>
+      </Pressable>
+    </>
+  );
+return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -286,7 +395,7 @@ const getMarkedDates = () => {
         {isMultiDay && (
           <View style={styles.multiDayBanner}>
             <Text style={styles.multiDayText}>
-              Multi-day event: Slots will be created for each day ({formatShortDate(startDate)} - {formatShortDate(endDate)})
+              Multi-day event: {formatShortDate(startDate)} - {formatShortDate(endDate)} ({eventDays.length} days)
             </Text>
           </View>
         )}
@@ -352,16 +461,6 @@ const getMarkedDates = () => {
           placeholderTextColor="#999"
         />
 
-        <Text style={styles.label}>Capacity Limit</Text>
-        <TextInput
-          style={styles.input}
-          value={capacity}
-          onChangeText={setCapacity}
-          placeholder="e.g. 20"
-          placeholderTextColor="#999"
-          keyboardType="number-pad"
-        />
-
         <Text style={styles.label}>Repeat Event</Text>
         <View style={styles.recurrenceContainer}>
           {(['none', 'weekly', 'biweekly', 'monthly'] as const).map((option) => (
@@ -400,35 +499,62 @@ const getMarkedDates = () => {
           </View>
         )}
 
+        {/* Signup Slots */}
         <Text style={styles.sectionTitle}>Signup Slots</Text>
-        {slots.map((slot) => (
-          <View key={slot.id} style={styles.slotRow}>
-            <TextInput
-              style={styles.slotName}
-              value={slot.name}
-              onChangeText={(v) => updateSlot(slot.id, 'name', v)}
-              placeholder="Slot name"
-              placeholderTextColor="#999"
-            />
-            <TextInput
-              style={styles.slotQty}
-              value={slot.quantity}
-              onChangeText={(v) => updateSlot(slot.id, 'quantity', v)}
-              placeholder="Qty"
-              placeholderTextColor="#999"
-              keyboardType="number-pad"
-            />
-            <Pressable
-              onPress={() => removeSlot(slot.id)}
-              style={styles.removeBtn}
+
+        {isMultiDay && (
+          <View style={styles.slotModeContainer}>
+            <TouchableOpacity
+              style={[styles.slotModeOption, slotMode === 'same' && styles.slotModeOptionSelected]}
+              onPress={() => handleSlotModeChange('same')}
             >
-              <Text style={styles.removeBtnText}>X</Text>
-            </Pressable>
+              <Text style={[styles.slotModeText, slotMode === 'same' && styles.slotModeTextSelected]}>
+                Same slots each day
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.slotModeOption, slotMode === 'different' && styles.slotModeOptionSelected]}
+              onPress={() => handleSlotModeChange('different')}
+            >
+              <Text style={[styles.slotModeText, slotMode === 'different' && styles.slotModeTextSelected]}>
+                Different slots each day
+              </Text>
+            </TouchableOpacity>
           </View>
-        ))}
-        <Pressable onPress={addSlot} style={styles.addSlotBtn}>
-          <Text style={styles.addSlotText}>+ Add Slot</Text>
-        </Pressable>
+        )}
+
+        {isMultiDay && slotMode === 'different' ? (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayTabsScroll}>
+              <View style={styles.dayTabs}>
+                {eventDays.map((day) => (
+                  <TouchableOpacity
+                    key={day}
+                    style={[styles.dayTab, activeDayTab === day && styles.dayTabActive]}
+                    onPress={() => setActiveDayTab(day)}
+                  >
+                    <Text style={[styles.dayTabText, activeDayTab === day && styles.dayTabTextActive]}>
+                      {formatShortDate(day)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            {activeDayTab && (
+              <View style={styles.daySlotContainer}>
+                <Text style={styles.daySlotTitle}>Slots for {formatShortDate(activeDayTab)}</Text>
+                {renderSlotRows(
+                  perDaySlots[activeDayTab] || [],
+                  (id, field, value) => updateDaySlot(activeDayTab, id, field, value),
+                  (id) => removeDaySlot(activeDayTab, id),
+                  () => addDaySlot(activeDayTab),
+                )}
+              </View>
+            )}
+          </>
+        ) : (
+          renderSlotRows(slots, updateSlot, removeSlot, addSlot)
+        )}
 
         {submitAttempted && validationErrors.length > 0 ? (
           <View style={styles.validationBox}>
@@ -459,7 +585,6 @@ const getMarkedDates = () => {
     </KeyboardAvoidingView>
   );
 }
-
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: '#F9F9F9' },
   content: { padding: 20, paddingBottom: 48 },
@@ -578,6 +703,77 @@ const styles = StyleSheet.create({
   removeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   addSlotBtn: { marginTop: 6, marginBottom: 24, paddingVertical: 10 },
   addSlotText: { color: '#7C3AED', fontSize: 16, fontWeight: '600' },
+  /* Slot mode toggle */
+  slotModeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  slotModeOption: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  slotModeOptionSelected: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  slotModeText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  slotModeTextSelected: {
+    color: '#FFFFFF',
+  },
+  /* Day tabs */
+  dayTabsScroll: {
+    marginBottom: 12,
+  },
+  dayTabs: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dayTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dayTabActive: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  dayTabText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  dayTabTextActive: {
+    color: '#FFFFFF',
+  },
+  daySlotContainer: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 16,
+  },
+  daySlotTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6B21A8',
+    marginBottom: 12,
+  },
   validationBox: {
     backgroundColor: '#FFF0F0',
     borderRadius: 10,

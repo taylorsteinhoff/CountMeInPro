@@ -42,6 +42,7 @@ export type SignupRow = {
   email: string;
   phone: string | null;
   slot_name: string | null;
+  notes: string | null;
 };
 
 /** Input shape for creating a new event with its slots in one call. */
@@ -182,6 +183,7 @@ export async function getEventDetail(eventId: string): Promise<EventDetail> {
         participant_id,
         slot_id,
         signed_up_at,
+        notes,
         participants(id, name, email, phone),
         signup_slots(name)
       )
@@ -212,6 +214,7 @@ export async function getEventDetail(eventId: string): Promise<EventDetail> {
     email: es.participants?.email ?? '',
     phone: es.participants?.phone ?? null,
     slot_name: es.signup_slots?.name ?? null,
+    notes: es.notes ?? null,
   }));
 
   const { signup_slots, event_signups, ...eventFields } = raw;

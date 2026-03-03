@@ -89,9 +89,6 @@ export default function EventDetailScreen() {
     );
   }
 
-  const spotsUsed = event.signups.length;
-  const fillPct = Math.min((spotsUsed / event.capacity) * 100, 100);
-
   const handleShare = async () => {
     await Share.share({
       message: `${event.title}\n${event.date} at ${event.time}\n${event.location}`,
@@ -357,50 +354,117 @@ export default function EventDetailScreen() {
           <Text style={styles.infoValue}>{event.location}</Text>
         </View>
 
-        {/* Capacity bar */}
-        <View style={styles.capacitySection}>
-          <Text style={styles.infoLabel}>
-            {spotsUsed} / {event.capacity} spots filled
-          </Text>
-          <View style={styles.barTrack}>
-            <View style={[styles.barFill, { width: `${fillPct}%` }]} />
-          </View>
-        </View>
-      </View>
 
-      {/* ── Signup Slots ── */}
+   {/* ── Signup Slots ── */}
       <Text style={styles.sectionTitle}>Signup Slots</Text>
-      {event.slots.map((slot) => (
-        <View key={slot.id} style={styles.slotRow}>
-          <Text style={styles.slotName}>{slot.name}</Text>
-          <Text style={styles.slotQty}>×{slot.quantity}</Text>
-        </View>
-      ))}
+      {event.slots.map((slot) => {
+        const slotSignups = event.signups.filter((s) => s.slot_id === slot.id);
+        const spotsLeft = slot.quantity - slotSignups.length;
+        const isFull = spotsLeft <= 0;
+        return (
+          <View key={slot.id} style={[styles.slotRow, isFull && styles.slotRowFull]}>
+            <Text style={[styles.slotName, isFull && styles.slotNameFull]}>{slot.name}</Text>
+            <Text style={[styles.slotAvailability, isFull && styles.slotAvailabilityFull]}>
+              {isFull ? 'Full' : `${spotsLeft} of ${slot.quantity} available`}
+            </Text>
+          </View>
+        );
+      })}
 
-      {/* ── Participants ── */}
+{/* ── Signups Grouped by Slot ── */}
       <Text style={styles.sectionTitle}>
         Signed Up ({event.signups.length})
       </Text>
       {event.signups.length === 0 ? (
         <Text style={styles.emptyText}>No signups yet</Text>
       ) : (
-        event.signups.map((p) => (
-          <View key={p.signup_id} style={styles.participantRow}>
-            <View style={styles.participantInfo}>
-              <Text style={styles.participantName}>{p.name}</Text>
-              <Text style={styles.participantDetail}>{p.email}</Text>
-              {p.phone ? <Text style={styles.participantDetail}>{p.phone}</Text> : null}
-              {p.slot_name ? <Text style={styles.participantSlot}>{p.slot_name}</Text> : null}
-            </View>
-            <TouchableOpacity
-              style={styles.swapBtn}
-              onPress={() => handleRequestSwap(p.signup_id, p.slot_name ?? 'your slot')}
-            >
-              <Text style={styles.swapBtnText}>🔄 Swap</Text>
-            </TouchableOpacity>
-          </View>
-        ))
-      )}
+        event.slots.map((slot) => {
+          const slotSignups = event.signups.filter((s) => s.slot_id === slot.id);
+          const spotsLeft = slot.quantity - slotSignups.length;
+          return (
+            <View key={slot.id} style={styles.slotGroup}>
+              <View style={styles.slotGroupHeader}>
+                <Text style={styles.slotGroupName}>{slot.name}</Text>
+                <Text style={[styles.slotGroupCount, spotsLeft <= 0 && styles.slotGroupCountFull]}>
+                  {spotsLeft <= 0 ? 'Full' : `${spotsLeft} of ${slot.quantity} available`}
+                </Text>
+              </View>
+              {slotSignups.length === 0 ? (
+                <Text style={styles.slotGroupEmpty}>No signups for this slot</Text>
+              ) : (
+               slotSignups.map((p) => (
+                  <View key={p.signup_id} style={styles.participantRow}>
+                    <View style={styles.participantInfo}>
+                      <Text style={styles.participantName}>{p.name}</Text>
+                      <Text style={styles.participantDetail}>{p.email}</Text>
+                      {p.phone ? <Text style={styles.participantDetail}>{p.phone}</Text> : null}
+                      {p.notes ? <Text style={styles.participantNotes}>{p.notes}</Text> : null}
+                    </View>
+                    <View style={styles.participantActions}>
+                      <TouchableOpacity
+                        style={styles.changeSlotBtn}
+                        onPress={() => {
+                          const otherSlots = event.slots.filter((s) => s.id !== slot.id);
+                          if (otherSlots.length === 0) {
+                            Alert.alert('No Other Slots', 'There are no other slots to move to.');
+                            return;
+                          }
+                          const options = otherSlots.map((s) => ({
+                            text: s.name,
+                            onPress: async () => {
+                              try {
+                                const { error: moveErr } = await supabase
+                                  .from('event_signups')
+                                  .update({ slot_id: s.id })
+                                  .eq('id', p.signup_id);
+                                if (moveErr) throw moveErr;
+                                Alert.alert('Moved', `${p.name} moved to "${s.name}".`);
+                                refreshEvent();
+                              } catch (err: unknown) {
+                                Alert.alert('Error', err instanceof Error ? err.message : 'Failed to change slot');
+                              }
+                            },
+                          }));
+                          options.push({ text: 'Cancel', style: 'cancel' } as any);
+                          Alert.alert(`Move ${p.name} to:`, 'Select a new slot:', options);
+                        }}
+                      >
+                        <Text style={styles.changeSlotBtnText}>Move</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.removeSignupBtn}
+                        onPress={() => {
+                          Alert.alert(
+                            'Remove Signup',
+                            `Remove ${p.name} from "${slot.name}"?`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Remove',
+                                style: 'destructive',
+                                onPress: async () => {
+                                  try {
+                                    const { error: delErr } = await supabase
+                                      .from('event_signups')
+                                      .delete()
+                                      .eq('id', p.signup_id);
+                                    if (delErr) throw delErr;
+                                    Alert.alert('Removed', `${p.name} has been removed.`);
+                                    refreshEvent();
+                                  } catch (err: unknown) {
+                                    Alert.alert('Error', err instanceof Error ? err.message : 'Failed to remove signup');
+                                  }
+                                },
+                              },
+                            ],
+                          );
+                        }}
+                      >
+                        <Text style={styles.removeSignupBtnText}>X</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
 
       {/* ── Pending Swap Requests ── */}
       {swapRequests.length > 0 && (
@@ -527,20 +591,6 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
   infoValue: { fontSize: 17, color: '#1A1A2E', fontWeight: '500' },
 
-  /* Capacity bar */
-  capacitySection: { marginTop: 6 },
-  barTrack: {
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    marginTop: 8,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: 8,
-    backgroundColor: '#4A90D9',
-    borderRadius: 4,
-  },
 
   /* Slots */
   sectionTitle: {
@@ -562,6 +612,10 @@ const styles = StyleSheet.create({
   },
   slotName: { fontSize: 16, color: '#1A1A2E', fontWeight: '500' },
   slotQty: { fontSize: 15, color: '#6B7280', fontWeight: '600' },
+  slotRowFull: { opacity: 0.5 },
+  slotNameFull: { color: '#9CA3AF' },
+  slotAvailability: { fontSize: 14, color: '#059669', fontWeight: '600' },
+  slotAvailabilityFull: { color: '#EF4444' },
 
   /* Participants */
   emptyText: { fontSize: 15, color: '#9CA3AF', marginBottom: 8 },
@@ -574,11 +628,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
+slotGroup: {
+    marginBottom: 20,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  slotGroupHeader: {
+    backgroundColor: '#F3E8FF',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  slotGroupName: { fontSize: 16, fontWeight: '700', color: '#6B21A8' },
+  slotGroupCount: { fontSize: 13, fontWeight: '600', color: '#059669' },
+  slotGroupCountFull: { color: '#EF4444' },
+  slotGroupEmpty: { fontSize: 14, color: '#9CA3AF', padding: 16, fontStyle: 'italic' },
   },
   participantInfo: { flex: 1 },
   participantName: { fontSize: 17, fontWeight: '600', color: '#1A1A2E' },
   participantDetail: { fontSize: 14, color: '#6B7280', marginTop: 2 },
   participantSlot: { fontSize: 12, color: '#4A90D9', fontWeight: '600', marginTop: 3 },
+  participantNotes: { fontSize: 13, color: '#6B7280', fontStyle: 'italic', marginTop: 3 },
 
   /* Swap request button (per row) */
   swapBtn: {
@@ -590,6 +668,27 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   swapBtnText: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
+participantActions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
+  changeSlotBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#EEF4FF',
+    borderWidth: 1,
+    borderColor: '#4A90D9',
+  },
+  changeSlotBtnText: { fontSize: 12, color: '#4A90D9', fontWeight: '700' },
+  removeSignupBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  removeSignupBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
 
   /* Pending swap request card */
   swapRequestRow: {

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CountMeInPro",
+    "name": "CountMeIn Pro",
     "slug": "CountMeInPro",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,23 +8,37 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#7C3AED"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.taylorsteinhoff.countmeinpro",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "CountMeIn Pro does not use the camera.",
+        "NSPhotoLibraryUsageDescription": "CountMeIn Pro does not access your photos.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.taylorsteinhoff.countmeinpro",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#7C3AED"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "03692fbe-e441-4c02-a9ce-a5eefcd4a860"
+      }
     }
   }
 }

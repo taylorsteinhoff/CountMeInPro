@@ -71,27 +71,18 @@ export default function HomeDashboardScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <View style={styles.headerRight}>
-          <Pressable
-            onPress={() => navigation.navigate('CreateEvent', { userId })}
-            style={styles.headerBtn}
-            hitSlop={8}
-          >
-            <Text style={styles.headerBtnPlus}>+</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleSignOut}
-            style={styles.headerBtn}
-            disabled={loadingSignOut}
-            hitSlop={8}
-          >
-            {loadingSignOut ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.headerBtnText}>Sign Out</Text>
-            )}
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={handleSignOut}
+          style={styles.headerBtn}
+          disabled={loadingSignOut}
+          hitSlop={8}
+        >
+          {loadingSignOut ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.headerBtnText}>Sign Out</Text>
+          )}
+        </Pressable>
       ),
     });
   }, [navigation, loadingSignOut]);
@@ -126,7 +117,8 @@ export default function HomeDashboardScreen() {
   if (past.length > 0) {
     sections.push({ title: 'Past Events', data: past });
   }
-const renderCard = ({ item }: { item: EventSummary }) => {
+
+  const renderCard = ({ item }: { item: EventSummary }) => {
     const isPast = item.date < today;
     const spotsLeft = item.capacity - item.signup_count;
     return (
@@ -143,12 +135,8 @@ const renderCard = ({ item }: { item: EventSummary }) => {
           <Text style={[styles.signupCount, isPast && styles.signupCountPast]}>
             {item.signup_count} signed up
           </Text>
-          {isPast ? (
+          {isPast && (
             <Text style={styles.pastBadge}>Completed</Text>
-          ) : (
-            <Text style={[styles.spotsLeft, spotsLeft <= 3 && styles.spotsLow]}>
-              {spotsLeft} {spotsLeft === 1 ? 'spot' : 'spots'} left
-            </Text>
           )}
         </View>
       </Pressable>
@@ -163,38 +151,52 @@ const renderCard = ({ item }: { item: EventSummary }) => {
       {section.title}
     </Text>
   );
-
-  if (sections.length === 0) {
+if (sections.length === 0) {
     return (
-      <View style={styles.empty}>
-        <Text style={styles.emptyText}>No events yet</Text>
-        <Text style={styles.emptyHint}>Tap + to create your first event</Text>
+      <View style={styles.flex}>
+        <View style={styles.empty}>
+          <Text style={styles.emptyText}>No events yet</Text>
+          <Text style={styles.emptyHint}>Tap the + button to create your first event</Text>
+        </View>
+        <Pressable
+          onPress={() => navigation.navigate('CreateEvent', { userId })}
+          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        >
+          <Text style={styles.fabText}>+</Text>
+        </Pressable>
       </View>
     );
   }
 
   return (
-    <SectionList
-      sections={sections}
-      keyExtractor={(e) => e.id}
-      renderItem={renderCard}
-      renderSectionHeader={renderSectionHeader}
-      contentContainerStyle={styles.list}
-      stickySectionHeadersEnabled={false}
-    />
+    <View style={styles.flex}>
+      <SectionList
+        sections={sections}
+        keyExtractor={(e) => e.id}
+        renderItem={renderCard}
+        renderSectionHeader={renderSectionHeader}
+        contentContainerStyle={styles.list}
+        stickySectionHeadersEnabled={false}
+      />
+      <Pressable
+        onPress={() => navigation.navigate('CreateEvent', { userId })}
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+      >
+        <Text style={styles.fabText}>+</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10, marginRight: 4 },
-  headerBtn: { paddingHorizontal: 10, paddingVertical: 4 },
-  headerBtnPlus: { color: '#fff', fontSize: 28, fontWeight: 'bold', lineHeight: 32 },
-  headerBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  flex: { flex: 1, backgroundColor: '#F9F9F9' },
+  headerBtn: { paddingHorizontal: 10, paddingVertical: 4, marginRight: 4 },
+  headerBtnText: { color: '#fff', fontSize: 14, fontWeight: '500', opacity: 0.9 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9F9F9' },
   errorText: { fontSize: 16, color: '#FF6B6B', textAlign: 'center', marginBottom: 16, paddingHorizontal: 32 },
   retryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: '#7C3AED' },
   retryText: { color: '#7C3AED', fontSize: 16, fontWeight: '600' },
-  list: { padding: 20, paddingBottom: 48, backgroundColor: '#F9F9F9' },
+  list: { padding: 20, paddingBottom: 100, backgroundColor: '#F9F9F9' },
   sectionHeader: {
     fontSize: 22,
     fontWeight: '800',
@@ -235,8 +237,6 @@ const styles = StyleSheet.create({
   },
   signupCount: { fontSize: 14, fontWeight: '600', color: '#7C3AED' },
   signupCountPast: { color: '#9CA3AF' },
-  spotsLeft: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
-  spotsLow: { color: '#FF6B6B' },
   pastBadge: {
     fontSize: 13,
     fontWeight: '700',
@@ -247,7 +247,25 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
   },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 80, backgroundColor: '#F9F9F9' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: 20, fontWeight: '600', color: '#6B7280', marginBottom: 6 },
   emptyHint: { fontSize: 15, color: '#9CA3AF' },
+  fab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabPressed: { opacity: 0.85, transform: [{ scale: 0.95 }] },
+  fabText: { color: '#fff', fontSize: 36, fontWeight: '300', lineHeight: 40 },
 });

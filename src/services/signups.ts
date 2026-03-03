@@ -73,6 +73,7 @@ export async function addSignup(
   eventId: string,
   participantId: string,
   slotId: string | null,
+  notes?: string,
 ): Promise<EventSignup> {
   console.log('[signups] addSignup — event:', eventId, '| participant:', participantId, '| slot:', slotId ?? 'none');
 
@@ -81,7 +82,8 @@ export async function addSignup(
     .insert({
       event_id: eventId,
       participant_id: participantId,
-      slot_id: slotId,
+    slot_id: slotId,
+      notes: notes || null,
     })
     .select()
     .single();

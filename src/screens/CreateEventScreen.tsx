@@ -21,12 +21,28 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 import { createEvent } from '../services/events';
 import { supabase } from '../services/supabase';
 
-// Format YYYY-MM-DD → "March 15, 2026" for display
 function formatDateDisplay(iso: string): string {
   if (!iso) return '';
   const [year, month, day] = iso.split('-').map(Number);
   const d = new Date(year, month - 1, day);
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function formatShortDate(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function getDateRange(startIso: string, endIso: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(startIso + 'T00:00:00');
+  const end = new Date(endIso + 'T00:00:00');
+  while (current <= end) {
+    dates.push(current.toISOString().split('T')[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
 }
 
 type CreateEventRoute = RouteProp<RootStackParamList, 'CreateEvent'>;
@@ -42,20 +58,6 @@ function makeSlot(name = '', quantity = '1'): SlotRow {
   return { id: String(nextSlotId++), name, quantity };
 }
 
-async function fetchSlotSuggestions(title: string, description: string): Promise<string[]> {
-  // Calls the Supabase Edge Function, which holds the Anthropic API key
-  // securely in server-side secrets — never exposed to the client.
-  const { data, error } = await supabase.functions.invoke('suggest-slots', {
-    body: { eventTitle: title, eventDescription: description },
-  });
-
-  if (error) throw new Error('AI suggestions unavailable right now.');
-
-  const suggestions = data?.suggestions;
-  if (!Array.isArray(suggestions)) throw new Error('Could not parse suggestions.');
-  return suggestions as string[];
-}
-
 export default function CreateEventScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -64,7 +66,8 @@ export default function CreateEventScreen() {
 
   const [title, setTitle] = useState(prefill?.title ?? '');
   const [description, setDescription] = useState(prefill?.description ?? '');
-  const [date, setDate] = useState(''); // always empty — user must pick a new date
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [time, setTime] = useState(prefill?.time ?? '');
   const [location, setLocation] = useState(prefill?.location ?? '');
   const [capacity, setCapacity] = useState(prefill?.capacity ?? '');
@@ -73,63 +76,53 @@ export default function CreateEventScreen() {
       ? prefill.slots.map((s) => makeSlot(s.name, s.quantity))
       : [makeSlot()],
   );
+
   const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none');
   const [recurrenceCount, setRecurrenceCount] = useState('4');
   const [showCalendar, setShowCalendar] = useState(false);
+  const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end'>('start');
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [suggestionsError, setSuggestionsError] = useState('');
-
-  // Tracks whether the user has tried to save at least once, so we know
-  // when to start showing validation errors.
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const addSlot = () => setSlots((prev) => [...prev, makeSlot()]);
-
   const removeSlot = (id: string) =>
     setSlots((prev) => prev.filter((s) => s.id !== id));
-
   const updateSlot = (id: string, field: 'name' | 'quantity', value: string) =>
     setSlots((prev) =>
       prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
     );
 
-  const addSuggestedSlot = (name: string) => {
-    // If the only slot is blank, fill it instead of adding a new one.
-    setSlots((prev) => {
-      const hasBlank = prev.length === 1 && !prev[0].name.trim();
-      if (hasBlank) return [{ ...prev[0], name }];
-      return [...prev, makeSlot(name)];
-    });
-    // Remove from suggestions list so it can't be added twice.
-    setSuggestions((prev) => prev.filter((s) => s !== name));
+  const openDatePicker = (target: 'start' | 'end') => {
+    setDatePickerTarget(target);
+    setShowCalendar(true);
   };
 
-  const handleGetSuggestions = async () => {
-    if (!title.trim()) {
-      setSuggestionsError('Enter an event title first so AI knows what to suggest.');
-      return;
+  const handleDateSelect = (dateString: string) => {
+    if (datePickerTarget === 'start') {
+      setStartDate(dateString);
+      if (!endDate || dateString > endDate) {
+        setEndDate(dateString);
+      }
+    } else {
+      setEndDate(dateString);
     }
-    setSuggestionsError('');
-    setSuggestions([]);
-    setSuggestionsLoading(true);
-    try {
-      const results = await fetchSlotSuggestions(title.trim(), description.trim());
-      setSuggestions(results);
-    } catch (e: unknown) {
-      setSuggestionsError(e instanceof Error ? e.message : 'Could not load suggestions.');
-    } finally {
-      setSuggestionsLoading(false);
-    }
+    setShowCalendar(false);
   };
 
-  // ── Derived validation ────────────────────────────────────────────────────
+  const isMultiDay = startDate && endDate && startDate !== endDate;
+
   const titleError = !title.trim()
     ? 'Event title is required.'
     : title.trim().length < 3
     ? 'Event title must be at least 3 characters long.'
+    : '';
+
+  const dateError = !startDate ? 'Start date is required.' : '';
+  const endDateError = !endDate
+    ? 'End date is required.'
+    : endDate < startDate
+    ? 'End date must be on or after start date.'
     : '';
 
   const parsedCapacity = parseInt(capacity, 10);
@@ -143,38 +136,34 @@ export default function CreateEventScreen() {
     ? 'At least one slot must have a name.'
     : '';
 
-  // Collect all active validation errors into one list.
-  const validationErrors = [titleError, capacityError, slotsError].filter(Boolean);
+  const validationErrors = [titleError, dateError, endDateError, capacityError, slotsError].filter(Boolean);
   const isFormValid = validationErrors.length === 0;
 
   const handleSave = async () => {
     setSubmitAttempted(true);
-
     if (!isFormValid) return;
-
     setApiError('');
     setLoading(true);
-
     try {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user?.id) throw new Error('Not authenticated');
-
       const count = recurrence === 'none' ? 1 : Math.min(Number(recurrenceCount) || 1, 52);
       let eventsCreated = 0;
-
       for (let i = 0; i < count; i++) {
-        const startDate = new Date(date + 'T00:00:00Z');
-
+        const baseStart = new Date(startDate + 'T00:00:00Z');
+        const baseEnd = new Date(endDate + 'T00:00:00Z');
         if (recurrence === 'weekly') {
-          startDate.setDate(startDate.getDate() + (i * 7));
+          baseStart.setDate(baseStart.getDate() + (i * 7));
+          baseEnd.setDate(baseEnd.getDate() + (i * 7));
         } else if (recurrence === 'biweekly') {
-          startDate.setDate(startDate.getDate() + (i * 14));
+          baseStart.setDate(baseStart.getDate() + (i * 14));
+          baseEnd.setDate(baseEnd.getDate() + (i * 14));
         } else if (recurrence === 'monthly') {
-          startDate.setMonth(startDate.getMonth() + i);
+          baseStart.setMonth(baseStart.getMonth() + i);
+          baseEnd.setMonth(baseEnd.getMonth() + i);
         }
-
-        const eventDate = startDate.toISOString().split('T')[0];
-
+        const eventStartDate = baseStart.toISOString().split('T')[0];
+        const eventEndDate = baseEnd.toISOString().split('T')[0];
         const { data: newEvent, error: eventError } = await supabase
           .from('events')
           .insert({
@@ -183,29 +172,35 @@ export default function CreateEventScreen() {
               ? `${title.trim()} (${i + 1}/${count})`
               : title.trim(),
             description: description.trim() || null,
-            date: eventDate,
+            date: eventStartDate,
+            end_date: eventEndDate,
             time: time.trim(),
             location: location.trim() || null,
             capacity: parsedCapacity,
           })
           .select()
           .single();
-
         if (eventError) throw eventError;
-
         const validSlots = slots.filter((s) => s.name.trim());
         if (validSlots.length > 0) {
-          const newSlots = validSlots.map((s) => ({
-            event_id: newEvent.id,
-            name: s.name.trim(),
-            quantity: parseInt(s.quantity, 10) || 1,
-          }));
+          const eventDates = getDateRange(eventStartDate, eventEndDate);
+          const isMulti = eventDates.length > 1;
+          const newSlots: Array<{ event_id: string; name: string; quantity: number }> = [];
+          for (const slotDate of eventDates) {
+            for (const s of validSlots) {
+              newSlots.push({
+                event_id: newEvent.id,
+                name: isMulti
+                  ? `${s.name.trim()} (${formatShortDate(slotDate)})`
+                  : s.name.trim(),
+                quantity: parseInt(s.quantity, 10) || 1,
+              });
+            }
+          }
           await supabase.from('signup_slots').insert(newSlots);
         }
-
         eventsCreated++;
       }
-
       Alert.alert(
         'Success',
         eventsCreated === 1
@@ -219,6 +214,22 @@ export default function CreateEventScreen() {
       setLoading(false);
     }
   };
+const getMarkedDates = () => {
+    const marked: any = {};
+    if (startDate && endDate && startDate !== endDate) {
+      const dates = getDateRange(startDate, endDate);
+      dates.forEach((d, index) => {
+        marked[d] = {
+          selected: true,
+          color: index === 0 || index === dates.length - 1 ? '#7C3AED' : '#DDD6FE',
+          textColor: index === 0 || index === dates.length - 1 ? '#fff' : '#7C3AED',
+        };
+      });
+    } else if (startDate) {
+      marked[startDate] = { selected: true, selectedColor: '#7C3AED' };
+    }
+    return marked;
+  };
 
   return (
     <KeyboardAvoidingView
@@ -230,7 +241,6 @@ export default function CreateEventScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Event Title */}
         <Text style={styles.label}>Event Title *</Text>
         <TextInput
           style={styles.input}
@@ -240,7 +250,6 @@ export default function CreateEventScreen() {
           placeholderTextColor="#999"
         />
 
-        {/* Description */}
         <Text style={styles.label}>Description</Text>
         <TextInput
           style={[styles.input, styles.multiline]}
@@ -252,53 +261,36 @@ export default function CreateEventScreen() {
           numberOfLines={3}
         />
 
-        {/* AI Suggestions button */}
-        <Pressable
-          onPress={handleGetSuggestions}
-          disabled={suggestionsLoading}
-          style={({ pressed }) => [styles.aiBtn, pressed && styles.aiBtnPressed]}
-        >
-          {suggestionsLoading ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.aiBtnText}>✨ Get AI Slot Suggestions</Text>
-          )}
-        </Pressable>
-        {suggestionsError ? (
-          <Text style={styles.suggestionsError}>{suggestionsError}</Text>
-        ) : null}
-
-        {/* Suggestions panel */}
-        {suggestions.length > 0 ? (
-          <View style={styles.suggestionsPanel}>
-            <Text style={styles.suggestionsPanelTitle}>AI Suggestions — tap + to add</Text>
-            {suggestions.map((s) => (
-              <View key={s} style={styles.suggestionRow}>
-                <Text style={styles.suggestionText}>{s}</Text>
-                <Pressable
-                  onPress={() => addSuggestedSlot(s)}
-                  style={({ pressed }) => [styles.addSuggBtn, pressed && styles.addSuggBtnPressed]}
-                >
-                  <Text style={styles.addSuggBtnText}>+ Add</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Date */}
-        <Text style={styles.label}>Date</Text>
+        <Text style={styles.label}>Start Date *</Text>
         <Pressable
           style={({ pressed }) => [styles.input, styles.datePicker, pressed && styles.datePickerPressed]}
-          onPress={() => setShowCalendar(true)}
+          onPress={() => openDatePicker('start')}
         >
-          <Text style={date ? styles.dateText : styles.datePlaceholder}>
-            {date ? formatDateDisplay(date) : 'Tap to select a date'}
+          <Text style={startDate ? styles.dateText : styles.datePlaceholder}>
+            {startDate ? formatDateDisplay(startDate) : 'Tap to select start date'}
           </Text>
           <Text style={styles.calendarIcon}>📅</Text>
         </Pressable>
 
-        {/* Calendar Modal */}
+        <Text style={styles.label}>End Date *</Text>
+        <Pressable
+          style={({ pressed }) => [styles.input, styles.datePicker, pressed && styles.datePickerPressed]}
+          onPress={() => openDatePicker('end')}
+        >
+          <Text style={endDate ? styles.dateText : styles.datePlaceholder}>
+            {endDate ? formatDateDisplay(endDate) : 'Tap to select end date'}
+          </Text>
+          <Text style={styles.calendarIcon}>📅</Text>
+        </Pressable>
+
+        {isMultiDay && (
+          <View style={styles.multiDayBanner}>
+            <Text style={styles.multiDayText}>
+              Multi-day event: Slots will be created for each day ({formatShortDate(startDate)} - {formatShortDate(endDate)})
+            </Text>
+          </View>
+        )}
+
         <Modal
           visible={showCalendar}
           transparent
@@ -307,23 +299,24 @@ export default function CreateEventScreen() {
         >
           <Pressable style={styles.modalOverlay} onPress={() => setShowCalendar(false)}>
             <Pressable style={styles.modalCard} onPress={() => {}}>
-              <Text style={styles.modalTitle}>Select a Date</Text>
+              <Text style={styles.modalTitle}>
+                {datePickerTarget === 'start' ? 'Select Start Date' : 'Select End Date'}
+              </Text>
               <Calendar
-                current={date || undefined}
+                current={datePickerTarget === 'start' ? (startDate || undefined) : (endDate || startDate || undefined)}
+                minDate={datePickerTarget === 'end' ? startDate : undefined}
                 onDayPress={(day: { dateString: string }) => {
-                  setDate(day.dateString);
-                  setShowCalendar(false);
+                  handleDateSelect(day.dateString);
                 }}
-                markedDates={
-                  date ? { [date]: { selected: true, selectedColor: '#4A90D9' } } : {}
-                }
+                markedDates={getMarkedDates()}
+                markingType={startDate && endDate && startDate !== endDate ? 'period' : 'dot'}
                 theme={{
                   backgroundColor: '#fff',
                   calendarBackground: '#fff',
-                  todayTextColor: '#4A90D9',
-                  selectedDayBackgroundColor: '#4A90D9',
+                  todayTextColor: '#7C3AED',
+                  selectedDayBackgroundColor: '#7C3AED',
                   selectedDayTextColor: '#fff',
-                  arrowColor: '#4A90D9',
+                  arrowColor: '#7C3AED',
                   monthTextColor: '#1A1A2E',
                   textMonthFontWeight: '700',
                   textMonthFontSize: 16,
@@ -331,7 +324,7 @@ export default function CreateEventScreen() {
                   textDayFontSize: 15,
                   textDayHeaderFontSize: 13,
                   textDayHeaderFontWeight: '600',
-                  dotColor: '#4A90D9',
+                  dotColor: '#7C3AED',
                 }}
               />
               <Pressable style={styles.modalClose} onPress={() => setShowCalendar(false)}>
@@ -341,7 +334,6 @@ export default function CreateEventScreen() {
           </Pressable>
         </Modal>
 
-        {/* Time */}
         <Text style={styles.label}>Time</Text>
         <TextInput
           style={styles.input}
@@ -351,7 +343,6 @@ export default function CreateEventScreen() {
           placeholderTextColor="#999"
         />
 
-        {/* Location */}
         <Text style={styles.label}>Location</Text>
         <TextInput
           style={styles.input}
@@ -361,7 +352,6 @@ export default function CreateEventScreen() {
           placeholderTextColor="#999"
         />
 
-        {/* Capacity */}
         <Text style={styles.label}>Capacity Limit</Text>
         <TextInput
           style={styles.input}
@@ -372,7 +362,6 @@ export default function CreateEventScreen() {
           keyboardType="number-pad"
         />
 
-        {/* Recurrence Options */}
         <Text style={styles.label}>Repeat Event</Text>
         <View style={styles.recurrenceContainer}>
           {(['none', 'weekly', 'biweekly', 'monthly'] as const).map((option) => (
@@ -395,7 +384,6 @@ export default function CreateEventScreen() {
             </TouchableOpacity>
           ))}
         </View>
-
         {recurrence !== 'none' && (
           <View style={styles.recurrenceCountContainer}>
             <Text style={styles.label}>How many times?</Text>
@@ -412,9 +400,7 @@ export default function CreateEventScreen() {
           </View>
         )}
 
-        {/* Signup Slots */}
         <Text style={styles.sectionTitle}>Signup Slots</Text>
-
         {slots.map((slot) => (
           <View key={slot.id} style={styles.slotRow}>
             <TextInput
@@ -440,24 +426,20 @@ export default function CreateEventScreen() {
             </Pressable>
           </View>
         ))}
-
         <Pressable onPress={addSlot} style={styles.addSlotBtn}>
           <Text style={styles.addSlotText}>+ Add Slot</Text>
         </Pressable>
 
-        {/* Validation errors (shown after first save attempt) */}
         {submitAttempted && validationErrors.length > 0 ? (
           <View style={styles.validationBox}>
             {validationErrors.map((err, i) => (
-              <Text key={i} style={styles.validationItem}>• {err}</Text>
+              <Text key={i} style={styles.validationItem}>* {err}</Text>
             ))}
           </View>
         ) : null}
 
-        {/* API-level error */}
         {apiError ? <Text style={styles.errorText}>{apiError}</Text> : null}
 
-        {/* Save */}
         <Pressable
           onPress={handleSave}
           style={({ pressed }) => [
@@ -494,8 +476,6 @@ const styles = StyleSheet.create({
     minHeight: 50,
   },
   multiline: { minHeight: 90, textAlignVertical: 'top' },
-
-  /* Date picker button */
   datePicker: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -505,8 +485,19 @@ const styles = StyleSheet.create({
   dateText: { fontSize: 16, color: '#1A1A2E' },
   datePlaceholder: { fontSize: 16, color: '#999' },
   calendarIcon: { fontSize: 20 },
-
-  /* Calendar modal */
+  multiDayBanner: {
+    backgroundColor: '#F3E8FF',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  multiDayText: {
+    fontSize: 14,
+    color: '#6B21A8',
+    fontWeight: '500',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -534,7 +525,7 @@ const styles = StyleSheet.create({
   },
   modalClose: {
     marginTop: 16,
-    backgroundColor: '#4A90D9',
+    backgroundColor: '#7C3AED',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -586,9 +577,7 @@ const styles = StyleSheet.create({
   },
   removeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   addSlotBtn: { marginTop: 6, marginBottom: 24, paddingVertical: 10 },
-  addSlotText: { color: '#4A90D9', fontSize: 16, fontWeight: '600' },
-
-  /* Validation error block above the save button */
+  addSlotText: { color: '#7C3AED', fontSize: 16, fontWeight: '600' },
   validationBox: {
     backgroundColor: '#FFF0F0',
     borderRadius: 10,
@@ -596,12 +585,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   validationItem: { color: '#D93025', fontSize: 14, marginBottom: 4 },
-
-  /* API-level error */
   errorText: { color: '#FF6B6B', fontSize: 15, marginBottom: 12 },
-
   saveBtn: {
-    backgroundColor: '#4A90D9',
+    backgroundColor: '#7C3AED',
     borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
@@ -609,56 +595,6 @@ const styles = StyleSheet.create({
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnPressed: { opacity: 0.88 },
   saveBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
-
-  /* AI suggestions button */
-  aiBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#7C3AED',
-    borderRadius: 12,
-    paddingVertical: 13,
-    marginTop: 10,
-  },
-  aiBtnPressed: { opacity: 0.85 },
-  aiBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  suggestionsError: { color: '#FF6B6B', fontSize: 13, marginTop: 6 },
-
-  /* Suggestions panel */
-  suggestionsPanel: {
-    backgroundColor: '#F5F0FF',
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#DDD6FE',
-  },
-  suggestionsPanelTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#7C3AED',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  suggestionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EDE9FE',
-  },
-  suggestionText: { flex: 1, fontSize: 15, color: '#1A1A2E', marginRight: 10 },
-  addSuggBtn: {
-    backgroundColor: '#7C3AED',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  addSuggBtnPressed: { opacity: 0.8 },
-  addSuggBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-
   recurrenceContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',

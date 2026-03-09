@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,23 +17,29 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { getEventDetail, type EventDetail } from '../services/events';
 import { supabase } from '../services/supabase';
+
 type DetailRoute = RouteProp<RootStackParamList, 'EventDetail'>;
+
 export default function EventDetailScreen() {
   const { params } = useRoute<DetailRoute>();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [swapRequests, setSwapRequests] = useState<any[]>([]);
+
   const SWAP_SELECT =
     '*, requester:requester_signup_id(*, participants(*), signup_slots(*)), target:target_signup_id(*, participants(*), signup_slots(*))';
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const data = await getEventDetail(params.eventId);
         if (!cancelled) setEvent(data);
+
         const { data: swaps } = await supabase
           .from('swap_requests')
           .select(SWAP_SELECT)
@@ -50,6 +55,7 @@ export default function EventDetailScreen() {
     })();
     return () => { cancelled = true; };
   }, [params.eventId]);
+
   const refreshEvent = async () => {
     try {
       const [data, { data: swaps }] = await Promise.all([
@@ -66,6 +72,7 @@ export default function EventDetailScreen() {
       // silent on background refresh
     }
   };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -73,6 +80,7 @@ export default function EventDetailScreen() {
       </View>
     );
   }
+
   if (error || !event) {
     return (
       <View style={styles.centered}>
@@ -80,34 +88,41 @@ export default function EventDetailScreen() {
       </View>
     );
   }
+
   const handleShare = async () => {
-    const shareUrl = `https://taylorsteinhoff.github.io/CountMeInPro/event.html?id=${event.id}`;
     await Share.share({
-      message: `You're invited to "${event.title}"!\n${event.date} at ${event.time}\n${event.location}\n\nSign up here: ${shareUrl}`,
+      message: `${event.title}\n${event.date} at ${event.time}\n${event.location}`,
     });
   };
+
   const handleExport = async () => {
     const lines = event.signups.length
-      ? event.signups.map((p) => `${p.name} \u2013 ${p.email}`).join('\n')
+      ? event.signups.map((p) => `${p.name} — ${p.email}`).join('\n')
       : 'No signups yet.';
     await Share.share({
       message: `Signup list for ${event.title}:\n\n${lines}`,
     });
   };
+
   const handleExportCSV = async () => {
     try {
+      // Build CSV header
       let csv = 'Slot Name,Participant Name,Email,Phone,Signed Up At\n';
+
       const { data: slots } = await supabase
         .from('signup_slots')
         .select('*')
         .eq('event_id', params.eventId)
         .order('created_at', { ascending: true });
+
       const { data: allSignups } = await supabase
         .from('event_signups')
         .select('*, participants(*), signup_slots(*)')
         .eq('event_id', params.eventId);
+
       for (const slot of slots || []) {
         const slotSignups = (allSignups || []).filter((s) => s.slot_id === slot.id);
+
         if (slotSignups.length === 0) {
           csv += `"${slot.name}","(empty)","","",""\n`;
         } else {
@@ -116,6 +131,7 @@ export default function EventDetailScreen() {
           }
         }
       }
+
       await Share.share({
         message: csv,
         title: `${event?.title} - Signups Export`,
@@ -125,6 +141,7 @@ export default function EventDetailScreen() {
       Alert.alert('Export Error', msg);
     }
   };
+
   const handleDuplicateEvent = async () => {
     Alert.alert(
       'Duplicate Event',
@@ -137,9 +154,12 @@ export default function EventDetailScreen() {
             try {
               const { data: user } = await supabase.auth.getUser();
               if (!user.user?.id) throw new Error('Not authenticated');
+
+              // Default the copy to one week from today
               const nextWeek = new Date();
               nextWeek.setDate(nextWeek.getDate() + 7);
               const newDate = nextWeek.toISOString().split('T')[0];
+
               const { data: newEvent, error: eventError } = await supabase
                 .from('events')
                 .insert({
@@ -153,19 +173,25 @@ export default function EventDetailScreen() {
                 })
                 .select()
                 .single();
+
               if (eventError) throw eventError;
+
+              // Copy all slots from the original event
               const { data: originalSlots } = await supabase
                 .from('signup_slots')
                 .select('*')
                 .eq('event_id', params.eventId);
+
               if (originalSlots && originalSlots.length > 0) {
                 const newSlots = originalSlots.map((s) => ({
                   event_id: newEvent.id,
                   name: s.name,
                   quantity: s.quantity,
                 }));
+
                 await supabase.from('signup_slots').insert(newSlots);
               }
+
               Alert.alert(
                 'Event Duplicated!',
                 `"${event.title} (Copy)" has been created for ${newDate}. You can edit the date and details from the dashboard.`,
@@ -186,35 +212,45 @@ export default function EventDetailScreen() {
       ],
     );
   };
-  const handleRequestSwap = async (mySignupId: string, mySlotName: string, mySlotId: string) => {
-    const allSignups = event.signups.filter((s) => s.slot_id !== mySlotId);
-    if (allSignups.length === 0) {
-      Alert.alert('No Swaps Available', 'No other participants in different slots to swap with.');
+
+  const handleRequestSwap = async (mySignupId: string, mySlotName: string) => {
+    const { data: otherSignups } = await supabase
+      .from('event_signups')
+      .select('*, participants(*), signup_slots(*)')
+      .eq('event_id', params.eventId)
+      .neq('id', mySignupId);
+
+    if (!otherSignups || otherSignups.length === 0) {
+      Alert.alert('No Swaps Available', 'No other participants to swap with.');
       return;
     }
+
     type AlertBtn = { text: string; onPress?: () => void; style?: 'default' | 'cancel' | 'destructive' };
-    const options: AlertBtn[] = allSignups.map((s) => ({
-      text: `${s.name} (${s.slot_name || 'Unknown slot'})`,
+    const options: AlertBtn[] = otherSignups.map((s) => ({
+      text: `${s.participants?.name || 'Unknown'} — ${s.signup_slots?.name || 'Unknown slot'}`,
       onPress: async () => {
         try {
-          await supabase
-            .from('event_signups')
-            .update({ slot_id: s.slot_id })
-            .eq('id', mySignupId);
-          await supabase
-            .from('event_signups')
-            .update({ slot_id: mySlotId })
-            .eq('id', s.signup_id);
-          Alert.alert('Swapped!', `${event.signups.find(x => x.signup_id === mySignupId)?.name} and ${s.name} have been swapped.`);
-          refreshEvent();
+          const { error } = await supabase.from('swap_requests').insert({
+            event_id: params.eventId,
+            requester_signup_id: mySignupId,
+            target_signup_id: s.id,
+            status: 'pending',
+          });
+          if (error) throw error;
+          Alert.alert(
+            'Swap Requested!',
+            `Your swap request has been sent to ${s.participants?.name}. They will be notified.`
+          );
         } catch (err: unknown) {
-          Alert.alert('Error', err instanceof Error ? err.message : 'Failed to swap');
+          Alert.alert('Error', err instanceof Error ? err.message : 'Failed to request swap');
         }
       },
     }));
     options.push({ text: 'Cancel', style: 'cancel' });
+
     Alert.alert(`Swap "${mySlotName}" with:`, 'Choose who to swap with:', options);
   };
+
   const handleRespondToSwap = async (swapId: string, response: 'accepted' | 'declined') => {
     try {
       if (response === 'accepted') {
@@ -223,46 +259,57 @@ export default function EventDetailScreen() {
           .select('*, requester:requester_signup_id(*), target:target_signup_id(*)')
           .eq('id', swapId)
           .single();
+
         if (!swap) throw new Error('Swap not found');
+
         const requesterSlotId = swap.requester?.slot_id;
         const targetSlotId = swap.target?.slot_id;
+
         await supabase
           .from('event_signups')
           .update({ slot_id: targetSlotId })
           .eq('id', swap.requester_signup_id);
+
         await supabase
           .from('event_signups')
           .update({ slot_id: requesterSlotId })
           .eq('id', swap.target_signup_id);
       }
+
       await supabase
         .from('swap_requests')
         .update({ status: response, updated_at: new Date().toISOString() })
         .eq('id', swapId);
+
       Alert.alert('Done', response === 'accepted' ? 'Slots swapped!' : 'Swap declined.');
       refreshEvent();
     } catch (err: unknown) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to process swap');
     }
   };
+
   const handleAddToCalendar = () => {
     const eventTitle = encodeURIComponent(event.title);
     const eventLocation = encodeURIComponent(event.location || '');
     const eventDescription = encodeURIComponent(event.description || '');
+    // Supabase returns date as "YYYY-MM-DD" and time as "HH:MM:SS"
     const startDate = event.date.replace(/-/g, '');
-    const startTime = event.time.replace(/:/g, '').slice(0, 6);
+    const startTime = event.time.replace(/:/g, '').slice(0, 6); // "HHMMSS"
+
     const googleUrl =
       `https://calendar.google.com/calendar/render?action=TEMPLATE` +
       `&text=${eventTitle}` +
       `&dates=${startDate}T${startTime}/${startDate}T${startTime}` +
       `&location=${eventLocation}` +
       `&details=${eventDescription}`;
+
     const outlookUrl =
       `https://outlook.live.com/calendar/0/deeplink/compose?subject=${eventTitle}` +
       `&startdt=${event.date}T${event.time}` +
       `&enddt=${event.date}T${event.time}` +
       `&location=${eventLocation}` +
       `&body=${eventDescription}`;
+
     Alert.alert(
       'Add to Calendar',
       'Choose your calendar:',
@@ -283,28 +330,32 @@ export default function EventDetailScreen() {
       ]
     );
   };
+
   const handleSignUp = () => {
     navigation.navigate('ParticipantSignUp', { eventId: event.id });
   };
+
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
       {/* ── Event Info Card ── */}
       <View style={styles.card}>
         <Text style={styles.title}>{event.title}</Text>
         <Text style={styles.description}>{event.description}</Text>
+
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Date & Time</Text>
           <Text style={styles.infoValue}>
-            {event.date}  {'\u00B7'}  {event.time}
+            {event.date}  ·  {event.time}
           </Text>
         </View>
+
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Location</Text>
           <Text style={styles.infoValue}>{event.location}</Text>
         </View>
-      </View>
 
-      {/* ── Signup Slots ── */}
+
+   {/* ── Signup Slots ── */}
       <Text style={styles.sectionTitle}>Signup Slots</Text>
       {event.slots.map((slot) => {
         const slotSignups = event.signups.filter((s) => s.slot_id === slot.id);
@@ -320,7 +371,7 @@ export default function EventDetailScreen() {
         );
       })}
 
-      {/* ── Signups Grouped by Slot ── */}
+{/* ── Signups Grouped by Slot ── */}
       <Text style={styles.sectionTitle}>
         Signed Up ({event.signups.length})
       </Text>
@@ -341,7 +392,7 @@ export default function EventDetailScreen() {
               {slotSignups.length === 0 ? (
                 <Text style={styles.slotGroupEmpty}>No signups for this slot</Text>
               ) : (
-                slotSignups.map((p) => (
+               slotSignups.map((p) => (
                   <View key={p.signup_id} style={styles.participantRow}>
                     <View style={styles.participantInfo}>
                       <Text style={styles.participantName}>{p.name}</Text>
@@ -411,14 +462,7 @@ export default function EventDetailScreen() {
                       >
                         <Text style={styles.removeSignupBtnText}>X</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.swapBtn}
-                        onPress={() => handleRequestSwap(p.signup_id, slot.name, slot.id)}
-                      >
-                        <Text style={styles.swapBtnText}>Swap</Text>
-                      </TouchableOpacity>
                     </View>
-                  </View>
                 ))
               )}
             </View>
@@ -442,7 +486,7 @@ export default function EventDetailScreen() {
                 <Text style={{ fontWeight: '600' }}>
                   "{swap.requester?.signup_slots?.name || '?'}"
                 </Text>
-                {' \u2194 '}
+                {' ↔ '}
                 <Text style={{ fontWeight: '600' }}>
                   "{swap.target?.signup_slots?.name || '?'}"
                 </Text>
@@ -471,22 +515,27 @@ export default function EventDetailScreen() {
         <Pressable onPress={handleShare} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Share Event</Text>
         </Pressable>
+
         <Pressable onPress={handleExport} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Export Signup List</Text>
         </Pressable>
+
         <TouchableOpacity style={styles.duplicateButton} onPress={handleDuplicateEvent}>
-          <Text style={styles.duplicateButtonText}>{'\uD83D\uDCCB'} Duplicate Event</Text>
+          <Text style={styles.duplicateButtonText}>📋 Duplicate Event</Text>
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.exportButton} onPress={handleExportCSV}>
-          <Text style={styles.exportButtonText}>{'\uD83D\uDCCA'} Export CSV</Text>
+          <Text style={styles.exportButtonText}>📊 Export CSV</Text>
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.calendarButton} onPress={handleAddToCalendar}>
-          <Text style={styles.calendarButtonText}>{'\uD83D\uDCC5'} Add to Calendar</Text>
+          <Text style={styles.calendarButtonText}>📅 Add to Calendar</Text>
         </TouchableOpacity>
+
         <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
           <Text style={styles.solidBtnText}>Sign Up</Text>
         </Pressable>
-        <Pressable
+<Pressable
           onPress={() => {
             Alert.alert(
               'Delete Event',
@@ -522,11 +571,14 @@ export default function EventDetailScreen() {
     </ScrollView>
   );
 }
+
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: '#F9F9F9' },
   content: { padding: 20, paddingBottom: 48 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9F9F9' },
   notFound: { fontSize: 18, color: '#6B7280' },
+
+  /* Card */
   card: {
     borderRadius: 14,
     padding: 20,
@@ -542,6 +594,9 @@ const styles = StyleSheet.create({
   infoRow: { marginBottom: 14 },
   infoLabel: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
   infoValue: { fontSize: 17, color: '#1A1A2E', fontWeight: '500' },
+
+
+  /* Slots */
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -565,6 +620,8 @@ const styles = StyleSheet.create({
   slotNameFull: { color: '#9CA3AF' },
   slotAvailability: { fontSize: 14, color: '#059669', fontWeight: '600' },
   slotAvailabilityFull: { color: '#EF4444' },
+
+  /* Participants */
   emptyText: { fontSize: 15, color: '#9CA3AF', marginBottom: 8 },
   participantRow: {
     flexDirection: 'row',
@@ -575,8 +632,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
-  },
-  slotGroup: {
+slotGroup: {
     marginBottom: 20,
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -599,11 +655,14 @@ const styles = StyleSheet.create({
   slotGroupCount: { fontSize: 13, fontWeight: '600', color: '#059669' },
   slotGroupCountFull: { color: '#EF4444' },
   slotGroupEmpty: { fontSize: 14, color: '#9CA3AF', padding: 16, fontStyle: 'italic' },
+  },
   participantInfo: { flex: 1 },
   participantName: { fontSize: 17, fontWeight: '600', color: '#1A1A2E' },
   participantDetail: { fontSize: 14, color: '#6B7280', marginTop: 2 },
   participantSlot: { fontSize: 12, color: '#4A90D9', fontWeight: '600', marginTop: 3 },
   participantNotes: { fontSize: 13, color: '#6B7280', fontStyle: 'italic', marginTop: 3 },
+
+  /* Swap request button (per row) */
   swapBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -613,7 +672,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   swapBtnText: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
-  participantActions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
+participantActions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
   changeSlotBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -634,6 +693,8 @@ const styles = StyleSheet.create({
     borderColor: '#EF4444',
   },
   removeSignupBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
+
+  /* Pending swap request card */
   swapRequestRow: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -666,6 +727,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   declineBtnText: { color: '#6B7280', fontWeight: '600', fontSize: 14 },
+
   swapButton: {
     backgroundColor: '#F3E8FF',
     borderRadius: 8,
@@ -676,6 +738,8 @@ const styles = StyleSheet.create({
   swapButtonText: {
     fontSize: 16,
   },
+
+  /* Buttons */
   actions: { marginTop: 36, gap: 12 },
   outlineBtn: {
     borderWidth: 1.5,
@@ -694,6 +758,7 @@ const styles = StyleSheet.create({
   },
   solidBtnPressed: { opacity: 0.88 },
   solidBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
+
   exportButton: {
     backgroundColor: '#059669',
     borderRadius: 12,
@@ -711,6 +776,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+
   duplicateButton: {
     backgroundColor: '#2563EB',
     borderRadius: 12,
@@ -728,6 +794,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+
   calendarButton: {
     backgroundColor: '#0EA5E9',
     borderRadius: 12,
@@ -745,7 +812,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  deleteBtn: {
+deleteBtn: {
     backgroundColor: '#FEE2E2',
     borderWidth: 1.5,
     borderColor: '#EF4444',

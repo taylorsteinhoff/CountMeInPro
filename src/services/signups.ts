@@ -145,7 +145,8 @@ export async function getEventSignups(eventId: string): Promise<SignupRow[]> {
     name: es.participants?.name ?? '',
     email: es.participants?.email ?? '',
     phone: es.participants?.phone ?? null,
-    slot_name: es.signup_slots?.name ?? null,
+        slot_name: es.signup_slots?.name ?? null,
+    notes: es.notes ?? null,
   }));
 
   console.log(`[signups] getEventSignups — ${rows.length} signup(s) for event ${eventId}`);

@@ -190,8 +190,8 @@ if (sections.length === 0) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: '#F9F9F9' },
-  headerBtn: { paddingHorizontal: 10, paddingVertical: 4, marginRight: 4 },
-  headerBtnText: { color: '#fff', fontSize: 14, fontWeight: '500', opacity: 0.9 },
+  headerBtn: { paddingHorizontal: 14, paddingVertical: 8, marginRight: 4, backgroundColor: '#7C3AED', borderRadius: 8 },
+  headerBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9F9F9' },
   errorText: { fontSize: 16, color: '#FF6B6B', textAlign: 'center', marginBottom: 16, paddingHorizontal: 32 },
   retryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: '#7C3AED' },

@@ -196,6 +196,17 @@ return (
         {submitAttempted && phoneError ? (
           <Text style={styles.fieldError}>{phoneError}</Text>
         ) : null}
+        <Text style={styles.label}>Notes (optional)</Text>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Any notes or special requests..."
+          placeholderTextColor="#999"
+          multiline
+          numberOfLines={3}
+        />
+        <Text style={styles.sectionTitle}>Select Slots * (tap to select multiple)</Text>
 
         <Text style={styles.sectionTitle}>Select Slots * (tap to select multiple)</Text>
         {event.slots.map((slot) => {

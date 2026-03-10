@@ -1,9 +1,13 @@
 
+
+
 import { useEffect, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -168,7 +172,7 @@ export default function EventDetailScreen() {
               }
               Alert.alert(
                 'Event Duplicated!',
-                `"${event.title} (Copy)" has been created for ${newDate}. You can edit the date and details from the dashboard.`,
+                `"${event.title} (Copy)" has been created for ${newDate}.`,
                 [
                   {
                     text: 'Go to Dashboard',
@@ -186,35 +190,115 @@ export default function EventDetailScreen() {
       ],
     );
   };
-  const handleRequestSwap = async (mySignupId: string, mySlotName: string, mySlotId: string) => {
+
+  // Move a participant to a different slot using ActionSheetIOS (handles unlimited options)
+  const handleMoveSignup = (pSignupId: string, pName: string, currentSlotId: string) => {
+    const otherSlots = event.slots.filter((s) => s.id !== currentSlotId);
+    if (otherSlots.length === 0) {
+      Alert.alert('No Other Slots', 'There are no other slots to move to.');
+      return;
+    }
+    const options = [...otherSlots.map((s) => s.name), 'Cancel'];
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: `Move ${pName} to:`,
+          options,
+          cancelButtonIndex: options.length - 1,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === options.length - 1) return;
+          const selectedSlot = otherSlots[buttonIndex];
+          try {
+            const { error: moveErr } = await supabase
+              .from('event_signups')
+              .update({ slot_id: selectedSlot.id })
+              .eq('id', pSignupId);
+            if (moveErr) throw moveErr;
+            Alert.alert('Moved', `${pName} moved to "${selectedSlot.name}".`);
+            refreshEvent();
+          } catch (err: unknown) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to move signup');
+          }
+        },
+      );
+    } else {
+      // Android fallback
+      const alertOptions = otherSlots.map((s) => ({
+        text: s.name,
+        onPress: async () => {
+          try {
+            const { error: moveErr } = await supabase
+              .from('event_signups')
+              .update({ slot_id: s.id })
+              .eq('id', pSignupId);
+            if (moveErr) throw moveErr;
+            Alert.alert('Moved', `${pName} moved to "${s.name}".`);
+            refreshEvent();
+          } catch (err: unknown) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to move signup');
+          }
+        },
+      }));
+      alertOptions.push({ text: 'Cancel', onPress: () => {} } as any);
+      Alert.alert(`Move ${pName} to:`, 'Select a new slot:', alertOptions as any);
+    }
+  };
+
+  // Swap two participants' slots instantly
+  const handleRequestSwap = (mySignupId: string, mySlotName: string, mySlotId: string) => {
     const allSignups = event.signups.filter((s) => s.slot_id !== mySlotId);
     if (allSignups.length === 0) {
       Alert.alert('No Swaps Available', 'No other participants in different slots to swap with.');
       return;
     }
-    type AlertBtn = { text: string; onPress?: () => void; style?: 'default' | 'cancel' | 'destructive' };
-    const options: AlertBtn[] = allSignups.map((s) => ({
-      text: `${s.name} (${s.slot_name || 'Unknown slot'})`,
-      onPress: async () => {
-        try {
-          await supabase
-            .from('event_signups')
-            .update({ slot_id: s.slot_id })
-            .eq('id', mySignupId);
-          await supabase
-            .from('event_signups')
-            .update({ slot_id: mySlotId })
-            .eq('id', s.signup_id);
-          Alert.alert('Swapped!', `${event.signups.find(x => x.signup_id === mySignupId)?.name} and ${s.name} have been swapped.`);
-          refreshEvent();
-        } catch (err: unknown) {
-          Alert.alert('Error', err instanceof Error ? err.message : 'Failed to swap');
-        }
-      },
-    }));
-    options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert(`Swap "${mySlotName}" with:`, 'Choose who to swap with:', options);
+    const options = [...allSignups.map((s) => `${s.name} (${s.slot_name || 'Unknown slot'})`), 'Cancel'];
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: `Swap "${mySlotName}" with:`,
+          options,
+          cancelButtonIndex: options.length - 1,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === options.length - 1) return;
+          const target = allSignups[buttonIndex];
+          try {
+            await supabase
+              .from('event_signups')
+              .update({ slot_id: target.slot_id })
+              .eq('id', mySignupId);
+            await supabase
+              .from('event_signups')
+              .update({ slot_id: mySlotId })
+              .eq('id', target.signup_id);
+            const myName = event.signups.find((x) => x.signup_id === mySignupId)?.name ?? '';
+            Alert.alert('Swapped!', `${myName} and ${target.name} have been swapped.`);
+            refreshEvent();
+          } catch (err: unknown) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to swap');
+          }
+        },
+      );
+    } else {
+      const alertOptions = allSignups.map((s) => ({
+        text: `${s.name} (${s.slot_name || 'Unknown slot'})`,
+        onPress: async () => {
+          try {
+            await supabase.from('event_signups').update({ slot_id: s.slot_id }).eq('id', mySignupId);
+            await supabase.from('event_signups').update({ slot_id: mySlotId }).eq('id', s.signup_id);
+            Alert.alert('Swapped!', `Slots have been swapped.`);
+            refreshEvent();
+          } catch (err: unknown) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to swap');
+          }
+        },
+      }));
+      alertOptions.push({ text: 'Cancel', onPress: () => {} } as any);
+      Alert.alert(`Swap "${mySlotName}" with:`, 'Choose who to swap with:', alertOptions as any);
+    }
   };
+
   const handleRespondToSwap = async (swapId: string, response: 'accepted' | 'declined') => {
     try {
       if (response === 'accepted') {
@@ -352,31 +436,7 @@ export default function EventDetailScreen() {
                     <View style={styles.participantActions}>
                       <TouchableOpacity
                         style={styles.changeSlotBtn}
-                        onPress={() => {
-                          const otherSlots = event.slots.filter((s) => s.id !== slot.id);
-                          if (otherSlots.length === 0) {
-                            Alert.alert('No Other Slots', 'There are no other slots to move to.');
-                            return;
-                          }
-                          const options = otherSlots.map((s) => ({
-                            text: s.name,
-                            onPress: async () => {
-                              try {
-                                const { error: moveErr } = await supabase
-                                  .from('event_signups')
-                                  .update({ slot_id: s.id })
-                                  .eq('id', p.signup_id);
-                                if (moveErr) throw moveErr;
-                                Alert.alert('Moved', `${p.name} moved to "${s.name}".`);
-                                refreshEvent();
-                              } catch (err: unknown) {
-                                Alert.alert('Error', err instanceof Error ? err.message : 'Failed to change slot');
-                              }
-                            },
-                          }));
-                          options.push({ text: 'Cancel', style: 'cancel' } as any);
-                          Alert.alert(`Move ${p.name} to:`, 'Select a new slot:', options);
-                        }}
+                        onPress={() => handleMoveSignup(p.signup_id, p.name, slot.id)}
                       >
                         <Text style={styles.changeSlotBtnText}>Move</Text>
                       </TouchableOpacity>
@@ -468,6 +528,10 @@ export default function EventDetailScreen() {
 
       {/* ── Action Buttons ── */}
       <View style={styles.actions}>
+        {/* Sign Up is first so it's easy to find */}
+        <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
+          <Text style={styles.solidBtnText}>Sign Up</Text>
+        </Pressable>
         <Pressable onPress={handleShare} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Share Event</Text>
         </Pressable>
@@ -483,9 +547,6 @@ export default function EventDetailScreen() {
         <TouchableOpacity style={styles.calendarButton} onPress={handleAddToCalendar}>
           <Text style={styles.calendarButtonText}>{'\uD83D\uDCC5'} Add to Calendar</Text>
         </TouchableOpacity>
-        <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
-          <Text style={styles.solidBtnText}>Sign Up</Text>
-        </Pressable>
         <Pressable
           onPress={() => {
             Alert.alert(
@@ -610,7 +671,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#D1D5DB',
-    marginLeft: 10,
+    marginLeft: 4,
   },
   swapBtnText: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
   participantActions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
@@ -673,9 +734,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginLeft: 8,
   },
-  swapButtonText: {
-    fontSize: 16,
-  },
+  swapButtonText: { fontSize: 16 },
   actions: { marginTop: 36, gap: 12 },
   outlineBtn: {
     borderWidth: 1.5,
@@ -706,11 +765,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  exportButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
+  exportButtonText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   duplicateButton: {
     backgroundColor: '#2563EB',
     borderRadius: 12,
@@ -723,11 +778,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  duplicateButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
+  duplicateButtonText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   calendarButton: {
     backgroundColor: '#0EA5E9',
     borderRadius: 12,
@@ -740,11 +791,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  calendarButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
+  calendarButtonText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   deleteBtn: {
     backgroundColor: '#FEE2E2',
     borderWidth: 1.5,

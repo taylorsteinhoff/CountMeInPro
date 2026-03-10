@@ -1,18 +1,17 @@
-
-
-
 import { useEffect, useState } from 'react';
 import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -31,6 +30,8 @@ export default function EventDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [swapRequests, setSwapRequests] = useState<any[]>([]);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmails, setInviteEmails] = useState('');
   const SWAP_SELECT =
     '*, requester:requester_signup_id(*, participants(*), signup_slots(*)), target:target_signup_id(*, participants(*), signup_slots(*))';
   useEffect(() => {
@@ -89,6 +90,30 @@ export default function EventDetailScreen() {
     await Share.share({
       message: `You're invited to "${event.title}"!\n${event.date} at ${event.time}\n${event.location}\n\nSign up here: ${shareUrl}`,
     });
+  };
+  const handleBulkInvite = () => {
+    if (!event) return;
+    const emails = inviteEmails
+      .split(/[\n,;]+/)
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0);
+    if (emails.length === 0) {
+      Alert.alert('No Emails', 'Please enter at least one email address.');
+      return;
+    }
+    const shareUrl = `https://taylorsteinhoff.github.io/CountMeInPro/event.html?id=${event.id}`;
+    const subject = encodeURIComponent(`You're invited: ${event.title}`);
+    const body = encodeURIComponent(
+      `Hi,\n\nYou're invited to "${event.title}"!\n\n` +
+      `Date: ${event.date}\nTime: ${event.time}\nLocation: ${event.location}\n\n` +
+      `Sign up here: ${shareUrl}\n\nHope to see you there!`
+    );
+    const mailto = `mailto:${emails.join(',')}?subject=${subject}&body=${body}`;
+    Linking.openURL(mailto).catch(() =>
+      Alert.alert('Error', 'Could not open your email app. Please make sure a mail app is set up on your device.')
+    );
+    setShowInviteModal(false);
+    setInviteEmails('');
   };
   const handleExport = async () => {
     const lines = event.signups.length
@@ -190,115 +215,6 @@ export default function EventDetailScreen() {
       ],
     );
   };
-
-  // Move a participant to a different slot using ActionSheetIOS (handles unlimited options)
-  const handleMoveSignup = (pSignupId: string, pName: string, currentSlotId: string) => {
-    const otherSlots = event.slots.filter((s) => s.id !== currentSlotId);
-    if (otherSlots.length === 0) {
-      Alert.alert('No Other Slots', 'There are no other slots to move to.');
-      return;
-    }
-    const options = [...otherSlots.map((s) => s.name), 'Cancel'];
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: `Move ${pName} to:`,
-          options,
-          cancelButtonIndex: options.length - 1,
-        },
-        async (buttonIndex) => {
-          if (buttonIndex === options.length - 1) return;
-          const selectedSlot = otherSlots[buttonIndex];
-          try {
-            const { error: moveErr } = await supabase
-              .from('event_signups')
-              .update({ slot_id: selectedSlot.id })
-              .eq('id', pSignupId);
-            if (moveErr) throw moveErr;
-            Alert.alert('Moved', `${pName} moved to "${selectedSlot.name}".`);
-            refreshEvent();
-          } catch (err: unknown) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to move signup');
-          }
-        },
-      );
-    } else {
-      // Android fallback
-      const alertOptions = otherSlots.map((s) => ({
-        text: s.name,
-        onPress: async () => {
-          try {
-            const { error: moveErr } = await supabase
-              .from('event_signups')
-              .update({ slot_id: s.id })
-              .eq('id', pSignupId);
-            if (moveErr) throw moveErr;
-            Alert.alert('Moved', `${pName} moved to "${s.name}".`);
-            refreshEvent();
-          } catch (err: unknown) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to move signup');
-          }
-        },
-      }));
-      alertOptions.push({ text: 'Cancel', onPress: () => {} } as any);
-      Alert.alert(`Move ${pName} to:`, 'Select a new slot:', alertOptions as any);
-    }
-  };
-
-  // Swap two participants' slots instantly
-  const handleRequestSwap = (mySignupId: string, mySlotName: string, mySlotId: string) => {
-    const allSignups = event.signups.filter((s) => s.slot_id !== mySlotId);
-    if (allSignups.length === 0) {
-      Alert.alert('No Swaps Available', 'No other participants in different slots to swap with.');
-      return;
-    }
-    const options = [...allSignups.map((s) => `${s.name} (${s.slot_name || 'Unknown slot'})`), 'Cancel'];
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: `Swap "${mySlotName}" with:`,
-          options,
-          cancelButtonIndex: options.length - 1,
-        },
-        async (buttonIndex) => {
-          if (buttonIndex === options.length - 1) return;
-          const target = allSignups[buttonIndex];
-          try {
-            await supabase
-              .from('event_signups')
-              .update({ slot_id: target.slot_id })
-              .eq('id', mySignupId);
-            await supabase
-              .from('event_signups')
-              .update({ slot_id: mySlotId })
-              .eq('id', target.signup_id);
-            const myName = event.signups.find((x) => x.signup_id === mySignupId)?.name ?? '';
-            Alert.alert('Swapped!', `${myName} and ${target.name} have been swapped.`);
-            refreshEvent();
-          } catch (err: unknown) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to swap');
-          }
-        },
-      );
-    } else {
-      const alertOptions = allSignups.map((s) => ({
-        text: `${s.name} (${s.slot_name || 'Unknown slot'})`,
-        onPress: async () => {
-          try {
-            await supabase.from('event_signups').update({ slot_id: s.slot_id }).eq('id', mySignupId);
-            await supabase.from('event_signups').update({ slot_id: mySlotId }).eq('id', s.signup_id);
-            Alert.alert('Swapped!', `Slots have been swapped.`);
-            refreshEvent();
-          } catch (err: unknown) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to swap');
-          }
-        },
-      }));
-      alertOptions.push({ text: 'Cancel', onPress: () => {} } as any);
-      Alert.alert(`Swap "${mySlotName}" with:`, 'Choose who to swap with:', alertOptions as any);
-    }
-  };
-
   const handleRespondToSwap = async (swapId: string, response: 'accepted' | 'declined') => {
     try {
       if (response === 'accepted') {
@@ -372,6 +288,46 @@ export default function EventDetailScreen() {
   };
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
+
+      {/* ── Bulk Invite Modal ── */}
+      <Modal
+        visible={showInviteModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowInviteModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Email Invite List</Text>
+            <TouchableOpacity onPress={() => setShowInviteModal(false)}>
+              <Text style={styles.modalClose}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.modalSubtitle}>
+            Paste or type email addresses below. Separate them with commas, semicolons, or new lines.
+          </Text>
+          <TextInput
+            style={styles.emailInput}
+            value={inviteEmails}
+            onChangeText={setInviteEmails}
+            placeholder={`parent1@example.com\nparent2@example.com\nvolunteer@example.com`}
+            placeholderTextColor="#9CA3AF"
+            multiline
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <Text style={styles.modalHint}>
+            This will open your email app with all recipients pre-filled and your event details ready to send.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.modalSendBtn, pressed && { opacity: 0.85 }]}
+            onPress={handleBulkInvite}
+          >
+            <Text style={styles.modalSendBtnText}>Open Email App to Send</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
       {/* ── Event Info Card ── */}
       <View style={styles.card}>
         <Text style={styles.title}>{event.title}</Text>
@@ -433,51 +389,37 @@ export default function EventDetailScreen() {
                       {p.phone ? <Text style={styles.participantDetail}>{p.phone}</Text> : null}
                       {p.notes ? <Text style={styles.participantNotes}>{p.notes}</Text> : null}
                     </View>
-                    <View style={styles.participantActions}>
-                      <TouchableOpacity
-                        style={styles.changeSlotBtn}
-                        onPress={() => handleMoveSignup(p.signup_id, p.name, slot.id)}
-                      >
-                        <Text style={styles.changeSlotBtnText}>Move</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.removeSignupBtn}
-                        onPress={() => {
-                          Alert.alert(
-                            'Remove Signup',
-                            `Remove ${p.name} from "${slot.name}"?`,
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Remove',
-                                style: 'destructive',
-                                onPress: async () => {
-                                  try {
-                                    const { error: delErr } = await supabase
-                                      .from('event_signups')
-                                      .delete()
-                                      .eq('id', p.signup_id);
-                                    if (delErr) throw delErr;
-                                    Alert.alert('Removed', `${p.name} has been removed.`);
-                                    refreshEvent();
-                                  } catch (err: unknown) {
-                                    Alert.alert('Error', err instanceof Error ? err.message : 'Failed to remove signup');
-                                  }
-                                },
+                    <TouchableOpacity
+                      style={styles.removeSignupBtn}
+                      onPress={() => {
+                        Alert.alert(
+                          'Remove Signup',
+                          `Remove ${p.name} from "${slot.name}"?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Remove',
+                              style: 'destructive',
+                              onPress: async () => {
+                                try {
+                                  const { error: delErr } = await supabase
+                                    .from('event_signups')
+                                    .delete()
+                                    .eq('id', p.signup_id);
+                                  if (delErr) throw delErr;
+                                  Alert.alert('Removed', `${p.name} has been removed.`);
+                                  refreshEvent();
+                                } catch (err: unknown) {
+                                  Alert.alert('Error', err instanceof Error ? err.message : 'Failed to remove signup');
+                                }
                               },
-                            ],
-                          );
-                        }}
-                      >
-                        <Text style={styles.removeSignupBtnText}>X</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.swapBtn}
-                        onPress={() => handleRequestSwap(p.signup_id, slot.name, slot.id)}
-                      >
-                        <Text style={styles.swapBtnText}>Swap</Text>
-                      </TouchableOpacity>
-                    </View>
+                            },
+                          ],
+                        );
+                      }}
+                    >
+                      <Text style={styles.removeSignupBtnText}>X</Text>
+                    </TouchableOpacity>
                   </View>
                 ))
               )}
@@ -528,13 +470,15 @@ export default function EventDetailScreen() {
 
       {/* ── Action Buttons ── */}
       <View style={styles.actions}>
-        {/* Sign Up is first so it's easy to find */}
         <Pressable onPress={handleSignUp} style={({ pressed }) => [styles.solidBtn, pressed && styles.solidBtnPressed]}>
           <Text style={styles.solidBtnText}>Sign Up</Text>
         </Pressable>
         <Pressable onPress={handleShare} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Share Event</Text>
         </Pressable>
+        <TouchableOpacity style={styles.inviteButton} onPress={() => setShowInviteModal(true)}>
+          <Text style={styles.inviteButtonText}>✉️ Email Invite List</Text>
+        </TouchableOpacity>
         <Pressable onPress={handleExport} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Export Signup List</Text>
         </Pressable>
@@ -665,25 +609,6 @@ const styles = StyleSheet.create({
   participantDetail: { fontSize: 14, color: '#6B7280', marginTop: 2 },
   participantSlot: { fontSize: 12, color: '#4A90D9', fontWeight: '600', marginTop: 3 },
   participantNotes: { fontSize: 13, color: '#6B7280', fontStyle: 'italic', marginTop: 3 },
-  swapBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    marginLeft: 4,
-  },
-  swapBtnText: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
-  participantActions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
-  changeSlotBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#EEF4FF',
-    borderWidth: 1,
-    borderColor: '#4A90D9',
-  },
-  changeSlotBtnText: { fontSize: 12, color: '#4A90D9', fontWeight: '700' },
   removeSignupBtn: {
     width: 28,
     height: 28,
@@ -693,6 +618,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#EF4444',
+    marginLeft: 8,
   },
   removeSignupBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
   swapRequestRow: {
@@ -727,14 +653,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   declineBtnText: { color: '#6B7280', fontWeight: '600', fontSize: 14 },
-  swapButton: {
-    backgroundColor: '#F3E8FF',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginLeft: 8,
-  },
-  swapButtonText: { fontSize: 16 },
   actions: { marginTop: 36, gap: 12 },
   outlineBtn: {
     borderWidth: 1.5,
@@ -753,12 +671,18 @@ const styles = StyleSheet.create({
   },
   solidBtnPressed: { opacity: 0.88 },
   solidBtnText: { color: '#fff', fontSize: 19, fontWeight: '700' },
+  inviteButton: {
+    backgroundColor: '#7C3AED',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  inviteButtonText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   exportButton: {
     backgroundColor: '#059669',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -771,7 +695,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -784,7 +707,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -803,4 +725,39 @@ const styles = StyleSheet.create({
   },
   deleteBtnPressed: { opacity: 0.8 },
   deleteBtnText: { color: '#EF4444', fontSize: 17, fontWeight: '700' },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#F9F9F9',
+    padding: 24,
+    paddingTop: 48,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: '#1A1A2E' },
+  modalClose: { fontSize: 16, color: '#7C3AED', fontWeight: '600' },
+  modalSubtitle: { fontSize: 15, color: '#6B7280', marginBottom: 16, lineHeight: 22 },
+  emailInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 15,
+    color: '#1A1A2E',
+    backgroundColor: '#fff',
+    minHeight: 160,
+    textAlignVertical: 'top',
+  },
+  modalHint: { fontSize: 13, color: '#9CA3AF', marginTop: 12, marginBottom: 24, lineHeight: 20 },
+  modalSendBtn: {
+    backgroundColor: '#7C3AED',
+    borderRadius: 12,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  modalSendBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });

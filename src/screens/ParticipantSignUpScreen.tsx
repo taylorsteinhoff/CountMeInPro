@@ -206,7 +206,6 @@ return (
           multiline
           numberOfLines={3}
         />
-        <Text style={styles.sectionTitle}>Select Slots * (tap to select multiple)</Text>
 
         <Text style={styles.sectionTitle}>Select Slots * (tap to select multiple)</Text>
         {event.slots.map((slot) => {

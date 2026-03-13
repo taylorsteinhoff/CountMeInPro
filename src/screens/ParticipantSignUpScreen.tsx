@@ -30,12 +30,12 @@ export default function ParticipantSignUpScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [notes, setNotes] = useState('');
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState('');
     const [apiError, setApiError] = useState('');
-  const [notes, setNotes] = useState('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {

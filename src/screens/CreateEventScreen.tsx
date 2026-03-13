@@ -27,13 +27,11 @@ function formatDateDisplay(iso: string): string {
   const d = new Date(year, month - 1, day);
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
-
 function formatShortDate(iso: string): string {
   const [year, month, day] = iso.split('-').map(Number);
   const d = new Date(year, month - 1, day);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
-
 function getDateRange(startIso: string, endIso: string): string[] {
   const dates: string[] = [];
   const current = new Date(startIso + 'T00:00:00');
@@ -46,13 +44,11 @@ function getDateRange(startIso: string, endIso: string): string[] {
 }
 
 type CreateEventRoute = RouteProp<RootStackParamList, 'CreateEvent'>;
-
 interface SlotRow {
   id: string;
   name: string;
   quantity: string;
 }
-
 let nextSlotId = 1;
 function makeSlot(name = '', quantity = '1'): SlotRow {
   return { id: String(nextSlotId++), name, quantity };
@@ -63,7 +59,6 @@ export default function CreateEventScreen() {
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { params } = useRoute<CreateEventRoute>();
   const { userId, prefill } = params;
-
   const [title, setTitle] = useState(prefill?.title ?? '');
   const [description, setDescription] = useState(prefill?.description ?? '');
   const [startDate, setStartDate] = useState('');
@@ -75,7 +70,6 @@ export default function CreateEventScreen() {
       ? prefill.slots.map((s) => makeSlot(s.name, s.quantity))
       : [makeSlot()],
   );
-
   const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none');
   const [recurrenceCount, setRecurrenceCount] = useState('4');
   const [showCalendar, setShowCalendar] = useState(false);
@@ -83,7 +77,6 @@ export default function CreateEventScreen() {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
-
   // Multi-day slot mode
   const [slotMode, setSlotMode] = useState<'same' | 'different'>('same');
   const [perDaySlots, setPerDaySlots] = useState<Record<string, SlotRow[]>>({});
@@ -118,7 +111,6 @@ export default function CreateEventScreen() {
     setSlots((prev) =>
       prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
     );
-
   const addDaySlot = (day: string) => {
     setPerDaySlots((prev) => ({
       ...prev,
@@ -142,7 +134,6 @@ export default function CreateEventScreen() {
     setDatePickerTarget(target);
     setShowCalendar(true);
   };
-
   const handleDateSelect = (dateString: string) => {
     if (datePickerTarget === 'start') {
       setStartDate(dateString);
@@ -160,14 +151,12 @@ export default function CreateEventScreen() {
     : title.trim().length < 3
     ? 'Event title must be at least 3 characters long.'
     : '';
-
   const dateError = !startDate ? 'Start date is required.' : '';
   const endDateError = !endDate
     ? 'End date is required.'
     : endDate < startDate
     ? 'End date must be on or after start date.'
     : '';
-
   const slotsError = (() => {
     if (isMultiDay && slotMode === 'different') {
       for (const day of eventDays) {
@@ -179,10 +168,24 @@ export default function CreateEventScreen() {
     }
     return !slots.some((s) => s.name.trim()) ? 'At least one slot must have a name.' : '';
   })();
-
   const validationErrors = [titleError, dateError, endDateError, slotsError].filter(Boolean);
   const isFormValid = validationErrors.length === 0;
-const handleSave = async () => {
+
+  const getRecurrenceDates = (): string[] => {
+    if (recurrence === 'none' || !startDate) return [];
+    const count = Math.min(Number(recurrenceCount) || 1, 52);
+    const dates: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const d = new Date(startDate + 'T00:00:00Z');
+      if (recurrence === 'weekly') d.setDate(d.getDate() + i * 7);
+      else if (recurrence === 'biweekly') d.setDate(d.getDate() + i * 14);
+      else if (recurrence === 'monthly') d.setMonth(d.getMonth() + i);
+      dates.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }));
+    }
+    return dates;
+  };
+
+  const handleSave = async () => {
     setSubmitAttempted(true);
     if (!isFormValid) return;
     setApiError('');
@@ -224,14 +227,11 @@ const handleSave = async () => {
           .select()
           .single();
         if (eventError) throw eventError;
-
         // Build slots based on mode
         const eventDates = getDateRange(eventStartDate, eventEndDate);
         const isMulti = eventDates.length > 1;
         const newSlots: Array<{ event_id: string; name: string; quantity: number }> = [];
-
         if (isMulti && slotMode === 'different') {
-          // Different slots per day
           const origDays = getDateRange(startDate, endDate);
           for (let dayIdx = 0; dayIdx < eventDates.length; dayIdx++) {
             const origDay = origDays[dayIdx] || origDays[0];
@@ -246,7 +246,6 @@ const handleSave = async () => {
             }
           }
         } else if (isMulti) {
-          // Same slots each day
           const validSlots = slots.filter((s) => s.name.trim());
           for (const slotDate of eventDates) {
             for (const s of validSlots) {
@@ -258,7 +257,6 @@ const handleSave = async () => {
             }
           }
         } else {
-          // Single day event
           const validSlots = slots.filter((s) => s.name.trim());
           for (const s of validSlots) {
             newSlots.push({
@@ -268,7 +266,6 @@ const handleSave = async () => {
             });
           }
         }
-
         if (newSlots.length > 0) {
           await supabase.from('signup_slots').insert(newSlots);
         }
@@ -340,7 +337,8 @@ const handleSave = async () => {
       </Pressable>
     </>
   );
-return (
+
+  return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -358,7 +356,6 @@ return (
           placeholder="e.g. PTA Bake Sale"
           placeholderTextColor="#999"
         />
-
         <Text style={styles.label}>Description</Text>
         <TextInput
           style={[styles.input, styles.multiline]}
@@ -369,7 +366,6 @@ return (
           multiline
           numberOfLines={3}
         />
-
         <Text style={styles.label}>Start Date *</Text>
         <Pressable
           style={({ pressed }) => [styles.input, styles.datePicker, pressed && styles.datePickerPressed]}
@@ -380,7 +376,6 @@ return (
           </Text>
           <Text style={styles.calendarIcon}>📅</Text>
         </Pressable>
-
         <Text style={styles.label}>End Date *</Text>
         <Pressable
           style={({ pressed }) => [styles.input, styles.datePicker, pressed && styles.datePickerPressed]}
@@ -391,7 +386,6 @@ return (
           </Text>
           <Text style={styles.calendarIcon}>📅</Text>
         </Pressable>
-
         {isMultiDay && (
           <View style={styles.multiDayBanner}>
             <Text style={styles.multiDayText}>
@@ -399,7 +393,6 @@ return (
             </Text>
           </View>
         )}
-
         <Modal
           visible={showCalendar}
           transparent
@@ -442,7 +435,6 @@ return (
             </Pressable>
           </Pressable>
         </Modal>
-
         <Text style={styles.label}>Time</Text>
         <TextInput
           style={styles.input}
@@ -451,7 +443,6 @@ return (
           placeholder="10:00 AM"
           placeholderTextColor="#999"
         />
-
         <Text style={styles.label}>Location</Text>
         <TextInput
           style={styles.input}
@@ -460,7 +451,6 @@ return (
           placeholder="e.g. Lincoln Elementary Gym"
           placeholderTextColor="#999"
         />
-
         <Text style={styles.label}>Repeat Event</Text>
         <View style={styles.recurrenceContainer}>
           {(['none', 'weekly', 'biweekly', 'monthly'] as const).map((option) => (
@@ -494,14 +484,19 @@ return (
               placeholder="4"
             />
             <Text style={styles.recurrencePreview}>
-              Creates {recurrenceCount || '0'} events ({recurrence === 'weekly' ? 'every week' : recurrence === 'biweekly' ? 'every 2 weeks' : 'every month'})
+              {(() => {
+                const dates = getRecurrenceDates();
+                if (dates.length === 0) return '';
+                const freq = recurrence === 'weekly' ? 'weekly' : recurrence === 'biweekly' ? 'every 2 weeks' : 'monthly';
+                const preview = dates.slice(0, 4).join(', ');
+                const more = dates.length > 4 ? ` + ${dates.length - 4} more` : '';
+                return `${dates.length} ${freq} event(s) starting:\n${preview}${more}`;
+              })()}
             </Text>
           </View>
         )}
-
         {/* Signup Slots */}
         <Text style={styles.sectionTitle}>Signup Slots</Text>
-
         {isMultiDay && (
           <View style={styles.slotModeContainer}>
             <TouchableOpacity
@@ -522,7 +517,6 @@ return (
             </TouchableOpacity>
           </View>
         )}
-
         {isMultiDay && slotMode === 'different' ? (
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayTabsScroll}>
@@ -555,7 +549,6 @@ return (
         ) : (
           renderSlotRows(slots, updateSlot, removeSlot, addSlot)
         )}
-
         {submitAttempted && validationErrors.length > 0 ? (
           <View style={styles.validationBox}>
             {validationErrors.map((err, i) => (
@@ -563,9 +556,7 @@ return (
             ))}
           </View>
         ) : null}
-
         {apiError ? <Text style={styles.errorText}>{apiError}</Text> : null}
-
         <Pressable
           onPress={handleSave}
           style={({ pressed }) => [
@@ -585,6 +576,7 @@ return (
     </KeyboardAvoidingView>
   );
 }
+
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: '#F9F9F9' },
   content: { padding: 20, paddingBottom: 48 },
@@ -703,7 +695,6 @@ const styles = StyleSheet.create({
   removeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   addSlotBtn: { marginTop: 6, marginBottom: 24, paddingVertical: 10 },
   addSlotText: { color: '#7C3AED', fontSize: 16, fontWeight: '600' },
-  /* Slot mode toggle */
   slotModeContainer: {
     flexDirection: 'row',
     gap: 8,
@@ -732,7 +723,6 @@ const styles = StyleSheet.create({
   slotModeTextSelected: {
     color: '#FFFFFF',
   },
-  /* Day tabs */
   dayTabsScroll: {
     marginBottom: 12,
   },

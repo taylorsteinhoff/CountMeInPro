@@ -32,20 +32,23 @@ export default function EventDetailScreen() {
   const [swapRequests, setSwapRequests] = useState<any[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmails, setInviteEmails] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const SWAP_SELECT =
     '*, requester:requester_signup_id(*, participants(*), signup_slots(*)), target:target_signup_id(*, participants(*), signup_slots(*))';
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await getEventDetail(params.eventId);
-        if (!cancelled) setEvent(data);
-        const { data: swaps } = await supabase
-          .from('swap_requests')
-          .select(SWAP_SELECT)
-          .eq('event_id', params.eventId)
-          .eq('status', 'pending');
-        if (!cancelled) setSwapRequests(swaps || []);
+        const [data, { data: swaps }, { data: userData }] = await Promise.all([
+          getEventDetail(params.eventId),
+          supabase.from('swap_requests').select(SWAP_SELECT).eq('event_id', params.eventId).eq('status', 'pending'),
+          supabase.auth.getUser(),
+        ]);
+        if (!cancelled) {
+          setEvent(data);
+          setSwapRequests(swaps || []);
+          setCurrentUserId(userData.user?.id ?? null);
+        }
       } catch (e: unknown) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : 'Failed to load event.');
@@ -283,6 +286,8 @@ export default function EventDetailScreen() {
       ]
     );
   };
+  const isOrganizer = currentUserId !== null && currentUserId === event?.user_id;
+
   const handleSignUp = () => {
     navigation.navigate('ParticipantSignUp', { eventId: event.id });
   };
@@ -360,11 +365,12 @@ export default function EventDetailScreen() {
         );
       })}
 
-      {/* ── Signups Grouped by Slot ── */}
-      <Text style={styles.sectionTitle}>
+      {/* ── Signups Grouped by Slot (organizer only) ── */}
+      {isOrganizer && <Text style={styles.sectionTitle}>
         Signed Up ({event.signups.length})
-      </Text>
-      {event.signups.length === 0 ? (
+      </Text>}
+  {isOrganizer && (
+        event.signups.length === 0 ? (
         <Text style={styles.emptyText}>No signups yet</Text>
       ) : (
         event.slots.map((slot) => {
@@ -426,10 +432,10 @@ export default function EventDetailScreen() {
             </View>
           );
         })
-      )}
+      ))}
 
-      {/* ── Pending Swap Requests ── */}
-      {swapRequests.length > 0 && (
+      {/* ── Pending Swap Requests (organizer only) ── */}
+      {isOrganizer && swapRequests.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>
             Pending Swaps ({swapRequests.length})
@@ -476,53 +482,57 @@ export default function EventDetailScreen() {
         <Pressable onPress={handleShare} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
           <Text style={styles.outlineBtnText}>Share Event</Text>
         </Pressable>
-        <TouchableOpacity style={styles.inviteButton} onPress={() => setShowInviteModal(true)}>
-          <Text style={styles.inviteButtonText}>✉️ Email Invite List</Text>
-        </TouchableOpacity>
-        <Pressable onPress={handleExport} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
-          <Text style={styles.outlineBtnText}>Export Signup List</Text>
-        </Pressable>
-        <TouchableOpacity style={styles.duplicateButton} onPress={handleDuplicateEvent}>
-          <Text style={styles.duplicateButtonText}>{'\uD83D\uDCCB'} Duplicate Event</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.exportButton} onPress={handleExportCSV}>
-          <Text style={styles.exportButtonText}>{'\uD83D\uDCCA'} Export CSV</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.calendarButton} onPress={handleAddToCalendar}>
           <Text style={styles.calendarButtonText}>{'\uD83D\uDCC5'} Add to Calendar</Text>
         </TouchableOpacity>
-        <Pressable
-          onPress={() => {
-            Alert.alert(
-              'Delete Event',
-              `Are you sure you want to delete "${event.title}"? This cannot be undone.`,
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Delete',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      const { error: delError } = await supabase
-                        .from('events')
-                        .delete()
-                        .eq('id', event.id);
-                      if (delError) throw delError;
-                      Alert.alert('Deleted', 'Event has been deleted.', [
-                        { text: 'OK', onPress: () => navigation.goBack() },
-                      ]);
-                    } catch (err: unknown) {
-                      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete event');
-                    }
-                  },
-                },
-              ],
-            );
-          }}
-          style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}
-        >
-          <Text style={styles.deleteBtnText}>Delete Event</Text>
-        </Pressable>
+        {isOrganizer && (
+          <>
+            <TouchableOpacity style={styles.inviteButton} onPress={() => setShowInviteModal(true)}>
+              <Text style={styles.inviteButtonText}>✉️ Email Invite List</Text>
+            </TouchableOpacity>
+            <Pressable onPress={handleExport} style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}>
+              <Text style={styles.outlineBtnText}>Export Signup List</Text>
+            </Pressable>
+            <TouchableOpacity style={styles.duplicateButton} onPress={handleDuplicateEvent}>
+              <Text style={styles.duplicateButtonText}>{'\uD83D\uDCCB'} Duplicate Event</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.exportButton} onPress={handleExportCSV}>
+              <Text style={styles.exportButtonText}>{'\uD83D\uDCCA'} Export CSV</Text>
+            </TouchableOpacity>
+            <Pressable
+              onPress={() => {
+                Alert.alert(
+                  'Delete Event',
+                  `Are you sure you want to delete "${event.title}"? This cannot be undone.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Delete',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          const { error: delError } = await supabase
+                            .from('events')
+                            .delete()
+                            .eq('id', event.id);
+                          if (delError) throw delError;
+                          Alert.alert('Deleted', 'Event has been deleted.', [
+                            { text: 'OK', onPress: () => navigation.goBack() },
+                          ]);
+                        } catch (err: unknown) {
+                          Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete event');
+                        }
+                      },
+                    },
+                  ],
+                );
+              }}
+              style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}
+            >
+              <Text style={styles.deleteBtnText}>Delete Event</Text>
+            </Pressable>
+          </>
+        )}
       </View>
     </ScrollView>
   );

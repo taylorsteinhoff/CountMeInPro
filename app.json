@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "CountMeIn Pro",
+    "scheme": "countmeinpro",
     "slug": "CountMeInPro",
     "version": "1.0.0",
     "orientation": "portrait",

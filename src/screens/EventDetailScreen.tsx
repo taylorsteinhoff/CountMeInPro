@@ -89,7 +89,7 @@ export default function EventDetailScreen() {
     );
   }
   const handleShare = async () => {
-    const shareUrl = `https://taylorsteinhoff.github.io/CountMeInPro/event.html?id=${event.id}`;
+    const shareUrl = `countmeinpro://signup/${event.id}`;
     await Share.share({
       message: `You're invited to "${event.title}"!\n${event.date} at ${event.time}\n${event.location}\n\nSign up here: ${shareUrl}`,
     });

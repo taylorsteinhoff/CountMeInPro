@@ -118,13 +118,13 @@ export default function AppNavigator() {
             component={EventDetailScreen}
             options={{ title: 'Event Details' }}
           />
-          <Stack.Screen
-            name="ParticipantSignUp"
-            component={ParticipantSignUpScreen}
-            options={{ title: 'Sign Up' }}
-          />
-        </>
+          </>
       )}
+      <Stack.Screen
+        name="ParticipantSignUp"
+        component={ParticipantSignUpScreen}
+        options={{ title: 'Sign Up' }}
+      />
     </Stack.Navigator>
   );
 }
